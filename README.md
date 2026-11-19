@@ -5,6 +5,7 @@ PA Bench Monitor Site2 기반 PAM 자동 측정 · DPD 플랫폼.
 - 원본: [jaybaek-git/Works](https://github.com/jaybaek-git/Works) (rto-current-meter 브랜치, commit a3bd213)
 - `PA-Bench-Monitor-Site2/PA-Bench-Monitor-Site2_v1.4.15_AnalyzerLink.zip` : 원본 zip 그대로
 - `PA-Bench-Monitor-Site2/PA-Bench-Monitor-Site2_v1.4.24.2_AnalyzerLink_JSH.zip` : **v1.4.24.2_JSH** (원본 v1.4.24 + JSH 수정)
+- 예전 JSH 버전 zip 도 같은 폴더에 그대로 (`…v1.4.24_…_JSH.zip` · `…v1.4.24.1_…_JSH.zip`) - 새 버전은 지우지 않고 번호만 올려 추가
 - `PA-Bench-Monitor-Site2/source/` : 지금 소스 = v1.4.24.2_JSH (수정은 여기서)
 
 ## JSH 수정 내역 — v1.4.24.2_JSH (원본 v1.4.24 기준)
