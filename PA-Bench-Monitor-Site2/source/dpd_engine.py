@@ -27,7 +27,6 @@ DEFAULTS = dict(
     os=4, n_sym=28, mod="256QAM", cfr_on=True, papr_db=8.0,
     sig_src="nr", wv_path="", ch_bw_mhz=98.28, adj_mhz=100.0,
     rec=None, auto_cal=False,
-    ec_iters=6, ec_mu=0.5, ila_guard_db=1.0, retry_off=2,
     K=7, M=4, L=1, odd_only=False, lam=1e-6, iters=4, mu=0.7, peak_lim_db=3.0, n_fit=40000, target_aclr=None,
 )
 
@@ -40,7 +39,7 @@ def migrate_method(p):
     if p.get("method") == "nn":
         p["model"], p["method"] = "nn", "ila"
     p.setdefault("model", "gmp")
-    if p.get("method") not in ("ila", "dla", "ilcm", "ilaec"):
+    if p.get("method") not in ("ila", "dla", "ilcm"):
         p["method"] = "ila"
     return p
 
@@ -55,7 +54,7 @@ def method_label(p):
         return "%s-ILC→모델" % MODEL_NAMES.get(m, m)
     if is_nn(p):
         return MODEL_NAMES[m]
-    return "%s-%s" % (MODEL_NAMES.get(m, m), {"dla": "DLA", "ilaec": "ILA+보정"}.get(p.get("method"), "ILA"))
+    return "%s-%s" % (MODEL_NAMES.get(m, m), "DLA" if p.get("method") == "dla" else "ILA")
 
 
 class Engine:
@@ -259,9 +258,6 @@ class Engine:
         p = self.p
         K = p["K"] if K is None else K
         M = p["M"] if M is None else M
-        lag = lead = None                          # GMP Lagging · Leading 따로 (4 카드, 빈칸 = L 과 같음)
-        if L is None and not (p.get("auto_model") and p.get("model", "gmp") == "gmp"):
-            lag, lead = p.get("L_lag"), p.get("L_lead")      # K · M · L 자동일 땐 자동이 고른 L 하나로 앞뒤 같게 (예전 그대로)
         L = p["L"] if L is None else L
         mdl = p.get("model", "gmp")
         if mdl == "tnn":
@@ -281,9 +277,9 @@ class Engine:
         elif mdl == "dvr":
             m = C.DVRModel(int(p.get("dvr_seg", 8)), M, p["lam"])
         elif mdl == "sgmp":
-            m = C.SegGMPModel(K, M, L, p["odd_only"], p["lam"], lag, lead)
+            m = C.SegGMPModel(K, M, L, p["odd_only"], p["lam"])
         else:
-            m = C.DPDModel(K, M, L, p["odd_only"], p["lam"], lag, lead)
+            m = C.DPDModel(K, M, L, p["odd_only"], p["lam"])
         m.w = None
         return m
 
@@ -482,7 +478,6 @@ class Engine:
         wv = C.write_wv(None, pd, sig.fs, comment="PA DPD Tester %s" % label)
         self.log("  %s: SG %.2f dBm 로 신호 보내는 중 (%.1f MB)…" % (label, lvl, len(wv) / 1e6))
         self.smw.load_wave(wv, p["freq_ghz"] * 1e9, lvl, rf_on=True)
-        self._sent_pd = pd                                 # JSH: 지금 SG 가 내보내는 신호 (끝에 가장 좋았던 것으로 돌아갔는지 확인용)
         self.check()
         w_set = float(p.get("settle_s", 0) or 0)          # SG 신호 · 레벨 바꾼 뒤 PA · 전류가 자리 잡을 때까지 (2 카드 '읽기 전 기다림')
         if w_set > 0:
@@ -799,8 +794,6 @@ class Engine:
                  pout_iq=pout_iq, pout_spec=pout_spec, pout_used=pout_used, de_iq=de_of(pout_iq), de_spec=de_of(pout_spec),
                  fsw_att=getattr(self, "_att_now", None), mod_att=mod_att_)
         self._last_r = r
-        if kind == "off":                           # JSH: 'DPD OFF 보다 나쁘면 다시' 기준 (같은 SG 일 때만 씀)
-            self._off_ref = (C.aclr_worst(r), y_al, p["sg_dbm"])
         # 목표 Pout 고정: DPD · ILC 는 '작은 신호 이득' 직선으로 맞추려 해서 반복할수록 Pout 이 올라감
         # → 목표와의 차이만큼 목표 이득 (G) 을 줄이거나 키워 다음 반복이 목표 Pout 으로 가게 (SG 는 그대로 고정)
         tgt_ = p.get("pout_lock")
@@ -878,10 +871,20 @@ class Engine:
     def dpd_signal(self, w):
         x = self.sig.x
         pd = self.model.apply(x, w)
+        return self.limit_pd(pd)
+
+    def limit_pd(self, pd):
+        """최고값 제한: 보통은 딱 자름 · '부드러운 제한' 이면 제한 90 % 부터 tanh 로 눌러 넘지 않게 (피크가 출렁여도 퍼지는 왜곡 적게)"""
+        x = self.sig.x
         lim = np.max(np.abs(x)) * 10 ** (self.p["peak_lim_db"] / 20)
         a = np.abs(pd)
         n_clip = int(np.sum(a > lim))
-        pd = np.where(a > lim, pd * lim / np.maximum(a, 1e-12), pd)
+        if getattr(self, "_soft", False):
+            kn = 0.9 * lim
+            a2 = np.where(a > kn, kn + (lim - kn) * np.tanh((a - kn) / (lim - kn)), a)
+            pd = pd * (a2 / np.maximum(a, 1e-12))
+        else:
+            pd = np.where(a > lim, pd * lim / np.maximum(a, 1e-12), pd)
         return pd, n_clip
 
     # ------------------------------------------------------------ 남은 시간 (측정 횟수 × 한 번 걸리는 시간)
@@ -948,10 +951,6 @@ class Engine:
         e["per"] = dt if e["per"] is None else 0.6 * e["per"] + 0.4 * dt
         e["t_last"] = now
         e["done"] += 1
-
-    def ec_n(self):
-        """JSH: 'ILA+보정' 오차 보정 측정 수 (남은 시간 계산용)"""
-        return int(self.p.get("ec_iters", 0) or 0) if (self.p.get("method") == "ilaec" and not is_nn(self.p)) else 0
 
     def auto_n(self):
         """K · M · L 자동 실측 후보 수: 기본 3 · 넓게 5"""
@@ -1128,55 +1127,6 @@ class Engine:
             self._force_mod = False
         return r
 
-    def log_model_params(self, title, w=None, nm=None, top=12):
-        """JSH: 찾은 DPD 모델 (GMP 등) 파라미터를 로그로 - 모델 · K · M · L (Lagging / Leading) · 계수 수 · 학습 오차 · 큰 계수"""
-        m = self.model
-        if m is None:
-            return
-        w = getattr(m, "w", None) if w is None else w
-        p = self.p
-        mdl = p.get("model", "gmp")
-        try:
-            name = MODEL_NAMES.get(mdl, mdl)
-            nmt = (" · 학습 오차 %.1f dB" % nm) if nm is not None and nm == nm else ""
-            if hasattr(m, "H"):                                     # 신경망
-                self.log("  ▣ %s 모델 파라미터: %s · M%d · 은닉 %d · 가중치 %d 개%s" % (title, name, m.M, m.H, m.n_coef(), nmt))
-                return
-            if hasattr(m, "nseg"):                                  # DVR
-                self.log("  ▣ %s 모델 파라미터: %s · 구간 %d · M%d · λ %g · 계수 %d 개%s" % (title, name, m.nseg, m.M, m.lam, m.n_coef(), nmt))
-            else:
-                ko = m.orders()
-                kx = len([k for k in ko if k > 1])
-                n_mp, n_lag, n_lead = m.M * len(ko), m.M * getattr(m, "lag", m.L) * kx, m.M * getattr(m, "lead", m.L) * kx
-                seg = 2 if hasattr(m, "t") and hasattr(m, "_gate") else 1        # 구간 GMP = 두 벌
-                self.log("  ▣ %s 모델 파라미터: %s · K%d (%s) · M%d · L%d · Lagging %d · Leading %d · λ %g · 계수 %d 개%s"
-                         % (title, name, m.K, "홀수만 " + ",".join(map(str, ko)) if m.odd else "1~%d" % m.K, m.M, m.L,
-                            getattr(m, "lag", m.L), getattr(m, "lead", m.L), m.lam, m.n_coef(), nmt))
-                extra = ""
-                if hasattr(m, "lin_delays") and getattr(m, "nlin", 0) > 0:
-                    extra += " · 긴 선형 등화 %d (±%d 탭)" % (len(m.lin_delays()), m.nlin)
-                if hasattr(m, "taus_us"):
-                    extra += " · 긴 메모리 (트래핑) %d (%s µs)" % (2 * len(m.taus_us), "·".join("%g" % t for t in m.taus_us))
-                self.log("    항 수: 메모리 다항식 %d · Lagging 교차 %d · Leading 교차 %d%s%s"
-                         % (n_mp, n_lag, n_lead, extra, (" (× 2 벌 = 피크 전 / 후, 경계 %.0f %% of max)" % (100 * getattr(m, "t_frac", float("nan"))))
-                            if seg == 2 else ""))
-            if w is None or not hasattr(m, "term_names"):
-                return
-            names = m.term_names()
-            w = np.asarray(w)
-            if len(names) != len(w):
-                return
-            ref = np.max(np.abs(w)) or 1.0
-            order = np.argsort(-np.abs(w))[:int(top)]
-            self.log("    큰 계수 %d 개 (|c| · 최대 대비 dB · 위상) - 전체는 [계수 CSV…]:" % len(order))
-            for i in order:
-                c = w[i]
-                nm_ = names[i].replace("n--", "n+").replace("(n-0)", "(n)")        # Leading 항: x(n+1) 처럼
-                self.log("      %-30s |c| %9.5f  %6.1f dB  ∠%7.1f°" % (nm_, abs(c), 20 * np.log10(abs(c) / ref + 1e-30),
-                                                                     np.degrees(np.angle(c))))
-        except Exception as e:
-            self.log("  (모델 파라미터 로그 못 씀: %s)" % e)
-
     def _dpd_level(self, y_al, w, label_pre, step, target=None, start=None):
         if self.p.get("method") == "ilcm" and start is None:
             # ILC → 모델: 먼저 ILC 로 이 PA 에 맞는 입력 u 를 직접 찾고 → 모델이 '원래 신호 x → u' 를 배우게 (측정 잡음 덜 탐)
@@ -1195,83 +1145,18 @@ class Engine:
             w, nm = self._ilcm_widen(x, u, w, nm)
             w, nm = self._ilcm_lin(x, u, w, nm)
             w, nm = self._ilcm_trap(x, u, w, nm)
+            w, nm = self._ilcm_stab(x, u, w, nm)
             w, nm = self._ilcm_focus(x, u, w, nm)
+            self._ilcm_ampdiag(x, u, w)
             self._ilcm_fit = nm
-            self.log_model_params("ILC→모델 학습", w, nm)        # JSH
             pd, n_clip = self.dpd_signal(w)
             y_al, last = self.measure(pd, "%sILC→모델" % label_pre, 1, nm, step)
             start = (pd, last)
-            ilcm_here = True
-        else:
-            ilcm_here = False
         last, w, pd = self._dpd_level_core(y_al, w, label_pre, step, target, start)
-        if not ilcm_here:
-            last, w, pd = self._retry_if_worse(last, w, pd, label_pre, step, target)     # JSH
-        if ilcm_here:
-            self.log_model_params("ILC→모델 최종 (ILA 다듬은 뒤)", w)   # JSH
         r = self._final_mod(pd, label_pre, step)
-        if r is None and pd is not None and getattr(self, "_sent_pd", None) is not pd:
-            # JSH: 되돌림 · 다시 로 '가장 좋았던' 계수로 끝남 → SG 는 아직 마지막에 해 본 (나쁜) 신호 → 가장 좋았던 신호를 다시 보내 확인
-            self.check()
-            self.log("▶ %s가장 좋았던 계수 신호를 다시 보냄 (SG 에 남기고 확인)" % label_pre)
-            _yb, r = self.measure(pd, "%s최고 계수 (다시 보냄)" % label_pre, 99, None, step)
         self.last_pd, self.last_sg = pd, self.p["sg_dbm"]
         self._resume = dict(kind="dpd", sg=self.p["sg_dbm"], w=w, pd=pd, last=(r or last), y_al=getattr(self, "_y_last", y_al))
         return (r or last), w, pd
-
-    def _retry_if_worse(self, last, w, pd, label_pre, step, target=None):
-        """JSH: DPD 결과가 (같은 SG 의) DPD OFF 보다 나쁘면 처음부터 다시 - 계수 버림 · DPD OFF 다시 재서 목표 이득 다시 · μ ½.
-        2 번째 다시부터는 목표 이득 크기 = 전체 평균 이득 (작은 신호 이득이 너무 커서 피크가 포화에 걸리는 경우).
-        가장 좋았던 시도로 끝냄"""
-        p = self.p
-        n_try = int(p.get("retry_off", 2) or 0)
-        off = getattr(self, "_off_ref", None)
-        if n_try <= 0 or off is None or abs(off[2] - p["sg_dbm"]) > 1e-6 or last is None:
-            return last, w, pd
-        sc = C.aclr_worst(last)
-        if not (sc == sc and sc > off[0]):
-            return last, w, pd
-        x = self.sig.x
-        best = (sc, last, w, pd, self.G, getattr(self, "_y_last", None), self.model)
-        mu0 = p["mu"]
-        try:
-            for att in range(1, n_try + 1):
-                self.check()
-                p["mu"] = max(float(mu0) * 0.5 ** att, 0.1)
-                avg = att >= 2
-                self.log("⚠ %sDPD %.1f dBc 가 DPD OFF %.1f dBc 보다 나쁨 → 처음부터 다시 (%d / %d): 계수 버림 · DPD OFF 다시 재서 "
-                         "목표 이득 다시%s · μ %.2f" % (label_pre, best[0], off[0], att, n_try,
-                                                    " (크기 = 전체 평균 이득)" if avg else "", p["mu"]))
-                self.G = None
-                y_off, r_off = self.measure(x, "%sDPD OFF (다시 %d)" % (label_pre, att), 0, step=step)
-                off = self._off_ref
-                if avg:
-                    g_all = np.vdot(x, y_off) / np.vdot(x, x)
-                    self.log("  목표 이득: 작은 신호 %.2f dB → 전체 평균 %.2f dB (위상은 작은 신호 그대로)"
-                             % (20 * np.log10(abs(self.G)), 20 * np.log10(abs(g_all))))
-                    self.G = abs(g_all) * np.exp(1j * np.angle(self.G))
-                if is_nn(p):
-                    self.model = self.make_model()
-                last_n, w_n, pd_n = self._dpd_level_core(y_off, None, "%s다시%d · " % (label_pre, att), step, target)
-                sc_n = C.aclr_worst(last_n) if last_n is not None else float("nan")
-                if sc_n == sc_n and sc_n < best[0]:
-                    best = (sc_n, last_n, w_n, pd_n, self.G, getattr(self, "_y_last", None), self.model)
-                if sc_n == sc_n and sc_n <= off[0]:
-                    self.log("  ✔ 다시 %d: %.1f dBc (DPD OFF %.1f 보다 좋음) → 끝" % (att, sc_n, off[0]))
-                    break
-                self.log("  다시 %d: %.1f dBc (DPD OFF %.1f 보다 아직 나쁨)" % (att, sc_n, off[0]))
-            else:
-                self.log("  ⚠ %d 번 다시 해도 DPD OFF 보다 나쁨 → 가장 좋았던 %.1f dBc 로 · PA 여유 (SG ↓) · 최고값 제한 · 측정 바닥 확인"
-                         % (n_try, best[0]))
-        finally:
-            p["mu"] = mu0
-        _s, last, w, pd, G_b, y_b, m_b = best
-        self.G = G_b
-        self.model = m_b
-        self.model.w = w
-        if y_b is not None:
-            self._y_last = y_b
-        return last, w, pd
 
     def _dpd_level_core(self, y_al, w, label_pre, step, target=None, start=None):
         """한 SG 레벨에서 DPD 반복 (w = 시작 계수, 앞 레벨 것) → (마지막 결과, 계수)
@@ -1280,13 +1165,9 @@ class Engine:
         pd = x
         last = None
         n = int(self.p["iters"])
-        guard = float(self.p.get("ila_guard_db", 1.0) or 0.0)      # JSH: 되돌림 기준 (0 = 끔)
-        mu_eff = float(self.p["mu"])
-        best = None
         if start is not None:
             pd, last = start
             n = max(n - 1, 1)
-            best = (C.aclr_worst(last), w, pd, last, y_al)
             if target is not None and C.aclr_worst(last) <= target:
                 self.log("  목표 ACLR %.1f dBc 이내 → 반복 끝" % target)
                 return last, w, pd
@@ -1298,12 +1179,11 @@ class Engine:
                 pd, _ = self.dpd_signal(w)
                 self.model.w = w
                 y_al, last = self.measure(pd, "%sDPD 0 (이전 계수)" % label_pre, it, None, step)
-                best = (C.aclr_worst(last), w, pd, last, y_al)
                 if target is not None and C.aclr_worst(last) <= target:
                     self.log("  목표 ACLR %.1f dBc 이내 → 다음 레벨" % target)
                     return last, w, pd
             meth = self.p.get("method", "ila")
-            mu = mu_eff
+            mu = float(self.p["mu"])
             if is_nn(self.p):
                 # 신경망: 이전 가중치에서 이어서 학습 (ILA 방식, 섞지 않음)
                 self.on_progress("%s · 신경망 학습 중 · %d 번째" % (self.eta_text(), it))
@@ -1326,17 +1206,6 @@ class Engine:
                 self.log("  최고값 제한 (+%.1f dB) 에 걸린 샘플 %d 개" % (self.p["peak_lim_db"], n_clip))
             y_al, last = self.measure(pd, "%sDPD %d" % (label_pre, it), it, nmse, step)
             kb = getattr(self, "_keep_best", None)
-            if kb is None and guard > 0:
-                sc = C.aclr_worst(last)
-                if sc == sc and (best is None or sc < best[0]):
-                    best = (sc, w, pd, last, y_al)
-                elif sc == sc and sc > best[0] + guard:
-                    # JSH 되돌림: 가장 좋았던 것보다 기준 넘게 나빠짐 → 그 계수 · 측정으로 돌아가 μ ½ 로 이어서
-                    mu_eff = max(mu_eff * 0.5, 0.1)
-                    self.log("  ↩ 되돌림: %.1f dBc (최고 %.1f 보다 %.1f dB 나쁨 > %.1f) → 가장 좋았던 계수로 · μ %.2f"
-                             % (sc, best[0], sc - best[0], guard, mu_eff))
-                    _s, w, pd, last, y_al = best
-                    self.model.w = w
             if kb is not None:
                 sc = C.aclr_worst(last)
                 if sc == sc and sc < kb[0]:
@@ -1350,101 +1219,7 @@ class Engine:
             if target is not None and C.aclr_worst(last) <= target:
                 self.log("  목표 ACLR %.1f dBc 이내 → 반복 끝" % target)
                 break
-        if guard > 0 and getattr(self, "_keep_best", None) is None and best is not None and last is not None \
-                and C.aclr_worst(last) > best[0] + 1e-9:
-            self.log("  ↩ 반복 끝: 마지막 %.1f 보다 좋았던 %.1f dBc 계수로" % (C.aclr_worst(last), best[0]))
-            _s, w, pd, last, y_al = best
-            self.model.w = w
-            self._y_last = y_al
-        if self.p.get("method") == "ilaec" and not is_nn(self.p) and w is not None and last is not None:
-            last, w, pd = self._ec_refine(w, pd, last, y_al, label_pre, step, target)     # JSH: ILA 뒤 오차 보정 반복
         return last, w, pd
-
-    # ------------------------------------------------------------ JSH: ILA + 오차 보정 (측정 반복하며 출력 오차를 직접 줄임)
-    @staticmethod
-    def _pa_curve(pd, y, nb=48):
-        """측정한 (입력 pd, 출력 y = y_al/G) 로 PA AM-AM F(r) · AM-PM φ(r) 곡선 (다항식) → (F, F', φ') 함수"""
-        r = np.abs(pd)
-        ok = r > 1e-9
-        r, yy, pp = r[ok], y[ok], pd[ok]
-        rmax = np.percentile(r, 99.9)
-        edges = np.linspace(0, rmax, nb + 1)
-        idx = np.clip(np.digitize(r, edges) - 1, 0, nb - 1)
-        rc, Fc, Pc, wc = [], [], [], []
-        ph = np.angle(yy * np.conj(pp))
-        for b in range(nb):
-            sel = idx == b
-            if np.count_nonzero(sel) < 20:
-                continue
-            rc.append(np.mean(r[sel]))
-            Fc.append(np.mean(np.abs(yy[sel])))
-            Pc.append(np.angle(np.mean(np.exp(1j * ph[sel]))))
-            wc.append(np.sqrt(np.count_nonzero(sel)))
-        rc, Fc, Pc, wc = map(np.asarray, (rc, Fc, Pc, wc))
-        # F(r) = r · (a0 + a1 r + … ) (원점 지남) · φ(r) = b0 + b1 r + …
-        A = np.stack([rc ** (k + 1) for k in range(6)], axis=1)
-        a = np.linalg.lstsq(A * wc[:, None], Fc * wc, rcond=None)[0]
-        B = np.stack([rc ** k for k in range(5)], axis=1)
-        bph = np.linalg.lstsq(B * wc[:, None], np.unwrap(Pc) * wc, rcond=None)[0]
-        F = lambda x: sum(a[k] * x ** (k + 1) for k in range(6))
-        dF = lambda x: sum((k + 1) * a[k] * x ** k for k in range(6))
-        dphi = lambda x: sum(k * bph[k] * x ** (k - 1) for k in range(1, 5))
-        return F, dF, dphi, rmax
-
-    def _ec_step(self, x, pd, y):
-        """출력 오차 e = x − y 를 PA 기울기로 입력 쪽 보정량 δpd 로 (지름 · 접선 방향 따로, AM-PM 섞임 반영)"""
-        e = x - y
-        F, dF, dphi, rmax = self._pa_curve(pd, y)
-        r = np.minimum(np.abs(pd), rmax)
-        g0 = max(float(dF(1e-3 * rmax)), 1e-6)                    # 작은 신호 기울기
-        Fp = np.maximum(dF(r), 0.25 * g0)                          # 포화 근처에서 기울기가 0 으로 가면 너무 크게 고치지 않게
-        Fr = np.maximum(F(r), 1e-9)
-        Fr_r = np.where(r > 1e-3 * rmax, Fr / np.maximum(r, 1e-12), g0)
-        uo = np.exp(1j * np.angle(y))                              # 출력 방향
-        ui = np.exp(1j * np.angle(pd))                             # 입력 방향
-        eo = e * np.conj(uo)
-        d_r = eo.real / Fp
-        d_t = (eo.imag - Fr * dphi(r) * d_r) / Fr_r
-        return (d_r + 1j * d_t) * ui, e
-
-    def _ec_refine(self, w, pd, last, y_al, label_pre, step, target=None):
-        """ILA 로 맞춘 계수에서 시작해 '측정 → 출력 오차 → PA 기울기로 입력 보정량 → 모델 계수에 μ 만큼 더함' 반복.
-        나빠지면 가장 좋았던 계수로 돌아가 μ 를 반으로. 반환 (가장 좋은 결과, 계수, 신호)"""
-        p, x = self.p, self.sig.x
-        n = int(p.get("ec_iters", 6) or 0)
-        mu = float(p.get("ec_mu", 0.5) or 0.5)
-        if n <= 0:
-            return last, w, pd
-        sc0 = C.aclr_worst(last)
-        best = (sc0, w, pd, last, y_al)
-        self.log("▶ %s오차 보정 %d 번 (μ %.2f) - ILA 결과 (%.1f dBc) 에서 측정 출력 오차를 PA 기울기로 직접 줄임"
-                 % (label_pre, n, mu, sc0))
-        for it in range(1, n + 1):
-            self.check()
-            yb = best[4] / self.G
-            dpd_in, e = self._ec_step(x, best[2], yb)
-            dw, _ = self.model.fit(x, self.focus_weight(dpd_in), n_fit=p["n_fit"])
-            nmse = 10 * np.log10(np.mean(np.abs(e) ** 2) / np.mean(np.abs(x) ** 2))
-            w_new = best[1] + mu * dw
-            self.model.w = w_new
-            pd_new, n_clip = self.dpd_signal(w_new)
-            if n_clip:
-                self.log("  최고값 제한 (+%.1f dB) 에 걸린 샘플 %d 개" % (p["peak_lim_db"], n_clip))
-            y_new, r = self.measure(pd_new, "%s오차 보정 %d" % (label_pre, it), it, nmse, step)
-            sc = C.aclr_worst(r)
-            if sc == sc and sc < best[0]:
-                self.log("  오차 보정 %d: %.1f dBc (좋아짐 %+.1f dB · 출력 오차 %.1f dB · μ %.2f)" % (it, sc, sc - best[0], nmse, mu))
-                best = (sc, w_new, pd_new, r, y_new)
-            else:
-                mu = max(mu * 0.5, 0.05)
-                self.log("  오차 보정 %d: %.1f dBc (최고 %.1f 보다 안 좋음) → 최고 계수로 돌아가 μ %.2f" % (it, sc, best[0], mu))
-            if target is not None and best[0] <= target:
-                self.log("  목표 ACLR %.1f dBc 이내 → 오차 보정 끝" % target)
-                break
-        self.model.w = best[1]
-        self.log("  ✔ 오차 보정 끝: %.1f → %.1f dBc (%+.1f dB)" % (sc0, best[0], best[0] - sc0))
-        self._y_last = best[4]
-        return best[3], best[1], best[2]
 
     def lock_sg(self):
         """목표 Pout (p['pout_lock']) 이 있으면: DPD OFF 신호를 보내며 실제 Pout 을 재서 SG 를 맞춤 → 그 SG 로 고정
@@ -1505,6 +1280,7 @@ class Engine:
 
     def run(self, do_dpd=True):
         """DPD OFF 측정 → (do_dpd) DPD 반복. 결과 목록 반환"""
+        self._soft = False
         self._wlog = False
         self._plog = False
         self._pk_note = False
@@ -1526,7 +1302,7 @@ class Engine:
         self.G = None
         auto = self.p.get("auto_model") and self.p.get("model", "gmp") == "gmp"
         n_it = int(self.p["iters"])
-        self.eta_reset(1 if not do_dpd else 1 + (self.auto_n() + max(n_it - 1, 1) if auto else n_it) + self.ec_n())
+        self.eta_reset(1 if not do_dpd else 1 + (self.auto_n() + max(n_it - 1, 1) if auto else n_it))
         self.eta_level(self.eta["total"])
         self.log("▶ DPD OFF 측정")
         y_al, r0 = self.measure(x, "DPD OFF", 0, step="SG %.2f dBm" % self.p["sg_dbm"])
@@ -1545,6 +1321,7 @@ class Engine:
     def run_compare(self, methods, with_ilc=False):
         """방식 비교: 같은 SG 레벨 · 같은 DPD OFF 측정에서 출발해 방식마다 DPD 반복 → 방식별 최고 결과 요약
         methods = [(model, learn), ...]  예: [("gmp","ila"), ("gmp","dla"), ("dvr","ila"), ("nn","ila")]"""
+        self._soft = False
         self._wlog = False
         self._plog = False
         self._pk_note = False
@@ -1566,7 +1343,7 @@ class Engine:
         self.lock_sg()
         x = self.sig.x
         p = self.p
-        keep = {k: p.get(k) for k in ("model", "method", "K", "M", "L", "L_lag", "L_lead")}
+        keep = {k: p.get(k) for k in ("model", "method", "K", "M", "L")}
         n_it = int(p["iters"])
         tot = 1
         for mdl, lrn in methods:
@@ -1619,8 +1396,7 @@ class Engine:
                                          n_coef=self.model.n_coef() if self.model is not None else 0,
                                          kml=("M%d H%d" % (p["M"], p.get("nn_hidden", 24)) if mdl in ("nn", "pnn", "tnn") else
                                               "구간 %d · M%d" % (p.get("dvr_seg", 8), p["M"]) if mdl == "dvr" else
-                                              "K%d M%d %s" % (p["K"], p["M"], self.model.lag_text() if hasattr(self.model, "lag_text")
-                                                               else "L%d" % p["L"])), err=err))
+                                              "K%d M%d L%d" % (p["K"], p["M"], p["L"])), err=err))
                 if best is not None:
                     sc_ = C.aclr_worst(best)
                     if getattr(self, "_cmp_best", None) is None or sc_ < self._cmp_best[0]:
@@ -1649,6 +1425,34 @@ class Engine:
         return self.results
 
     def _ilc_level(self, y_al, label_pre, step, resume=None):
+        """ILC (보정 기준: 'ILC 는 시간 영역' 이 켜져 있으면 ILC 동안만 시간 영역 - 모델이 배우기 좋은 고른 정답)"""
+        p = self.p
+        wm0 = p.get("w_mode")
+        if p.get("ilc_time") and self.w_mode() != "time":
+            p["w_mode"] = "time"
+            self._wlog = False
+            self.log("  ILC 보정 기준: 시간 영역 (모델 학습용 정답 · 모델 다듬기는 보정 기준 '%s' 대로)" % wm0)
+        self._ilc_wm = self.w_mode()
+        self._ilc_live = None
+        try:
+            return self._ilc_level0(y_al, label_pre, step, resume)
+        except Stop:
+            lv = getattr(self, "_ilc_live", None)
+            if lv is not None:                          # 중지: 그때까지 가장 좋았던 것으로 '이어서' · 'ILC 결과로 모델' 쓸 수 있게
+                best, gk, k, lp, stp = lv
+                sg_b = best[1].get("base_sg") if isinstance(best[1], dict) else None
+                sg_b = float(sg_b) if sg_b is not None and sg_b == sg_b else self.p["sg_dbm"]
+                self._resume = dict(kind="ilc", sg=sg_b, sg_end=self.p["sg_dbm"], u=best[2], y_al=best[3], gk=gk, best=best, k=k,
+                                    label_pre=lp, step=stp, w_mode_used=self.w_mode(), stopped=True)
+                self._ilc_u = best[2]
+                self.log("  ■ ILC 중지 → 지금까지 가장 좋았던 것 (%.1f dBc) 을 'ILC 결과로 모델 만들기' 에 씀" % best[0])
+            raise
+        finally:
+            if p.get("w_mode") != wm0:
+                p["w_mode"] = wm0
+                self._wlog = False
+
+    def _ilc_level0(self, y_al, label_pre, step, resume=None):
         """ILC: 모델 없이 측정을 되풀이하며 'PA 출력 = 원래 신호' 가 되는 입력을 샘플마다 직접 찾음 → 이 PA 의 한계 ACLR"""
         p, x = self.p, self.sig.x
         n = int(p.get("ilc_iters", 10))
@@ -1661,46 +1465,6 @@ class Engine:
         if resume:                                         # 이어서: 앞 ILC 의 가장 좋았던 입력 · 이득에서 계속
             u, y_al, gk, best, k0 = resume["u"].copy(), resume["y_al"], resume["gk"], resume["best"], resume["k"]
             n = int(resume["n"])
-        try:
-            best, u, y_al, gk, _k = self._ilc_loop(x, u, y_al, best, gk, k0, n, lim, label_pre, step)
-        except Stop:
-            best = getattr(self, "_ilc_best", None) or best
-            if best is not None:                           # JSH: 중지해도 그때까지 가장 좋았던 입력을 결과로 남김 → 파일 저장 · ILC→모델 가능
-                self._ilc_u = best[2]
-                sg_b = best[1].get("base_sg") if isinstance(best[1], dict) else None
-                sg_b = float(sg_b) if sg_b is not None and sg_b == sg_b else self.p["sg_dbm"]
-                self._resume = dict(kind="ilc", sg=sg_b, sg_end=self.p["sg_dbm"], u=best[2], y_al=best[3], gk=gk, best=best,
-                                    k=self._ilc_k, label_pre=label_pre, step=step, partial=True)
-                self.log("  ■ ILC 중지 - 지금까지 %d 번 중 최고 %.1f dBc 를 결과로 남김 (ILC 결과로 모델 만들기 가능)"
-                         % (self._ilc_k - k0, best[0]))
-                self._ilc_done(partial=True)
-            raise
-        self._ilc_u = best[2]
-        sg_b = best[1].get("base_sg") if isinstance(best[1], dict) else None
-        sg_b = float(sg_b) if sg_b is not None and sg_b == sg_b else self.p["sg_dbm"]      # ILC 가장 좋았던 순간의 SG
-        self._resume = dict(kind="ilc", sg=sg_b, sg_end=self.p["sg_dbm"], u=best[2], y_al=best[3], gk=gk, best=best, k=k0 + n,
-                            label_pre=label_pre, step=step)
-        self._ilc_done(partial=False)                      # JSH: ILC 가 끝나면 (어느 실행에서든) 파일로 저장
-        r_fin = self._final_mod(best[2], label_pre, step, kind="ilc")
-        self.last_pd, self.last_sg = best[2], self.p["sg_dbm"]       # 최종 신호 = ILC 가장 좋았던 입력
-        best = (best[0], r_fin or best[1])
-        self.log("  ✔ 한계 ACLR (ILC 최고): %.1f / %.1f dBc · Pout %.2f dBm" % (best[1]["aclr_l"], best[1]["aclr_u"], best[1]["pout"]))
-        return best[1]
-
-    def _ilc_done(self, partial):
-        """JSH: ILC 결과가 생기면 화면 쪽 (on_ilc) 에 알림 → .npz 저장"""
-        cb = getattr(self, "on_ilc", None)
-        if cb is None:
-            return
-        try:
-            cb(self, partial)
-        except Exception as e:
-            self.log("  ⚠ ILC 결과 저장 못 함: %s" % e)
-
-    def _ilc_loop(self, x, u, y_al, best, gk, k0, n, lim, label_pre, step):
-        """ILC 반복 (원래 _ilc_level 안의 반복 그대로) → (best, u, y_al, gk, 마지막 k)"""
-        p = self.p
-        self._ilc_k, self._ilc_best = k0, best
         for k in range(k0 + 1, k0 + n + 1):
             self.check()
             self.log("▶ %sILC %d / %d (한계 ACLR 찾기 · 이득 %.2f)" % (label_pre, k, k0 + n, gk))
@@ -1727,13 +1491,23 @@ class Engine:
                 u, y_al = best[2].copy(), best[3]
                 self.log("  ILC 나빠짐 (%.1f > 최고 %.1f dBc%s) → 최고 때로 돌아가 이득 %.2f"
                          % (sc, best[0], " · 집중 구간" if fd is not None else "", gk))
+            self._ilc_live = (best, gk, k, label_pre, step)
             if r.get("clipped"):
                 self.log("  ⚠ SG 레벨이 SG 최대에 걸림 → ILC 가 입력을 더 못 키움 (2 카드 SG 최대 확인)")
-            self._ilc_best, self._ilc_k = best, k               # JSH: 중지돼도 여기까지는 남김
-        return best, u, y_al, gk, self._ilc_k
+        self._ilc_u = best[2]
+        sg_b = best[1].get("base_sg") if isinstance(best[1], dict) else None
+        sg_b = float(sg_b) if sg_b is not None and sg_b == sg_b else self.p["sg_dbm"]      # ILC 가장 좋았던 순간의 SG
+        self._resume = dict(kind="ilc", sg=sg_b, sg_end=self.p["sg_dbm"], u=best[2], y_al=best[3], gk=gk, best=best, k=k0 + n,
+                            label_pre=label_pre, step=step, w_mode_used=self.w_mode())
+        r_fin = self._final_mod(best[2], label_pre, step, kind="ilc")
+        self.last_pd, self.last_sg = best[2], self.p["sg_dbm"]       # 최종 신호 = ILC 가장 좋았던 입력
+        best = (best[0], r_fin or best[1])
+        self.log("  ✔ 한계 ACLR (ILC 최고): %.1f / %.1f dBc · Pout %.2f dBm" % (best[1]["aclr_l"], best[1]["aclr_u"], best[1]["pout"]))
+        return best[1]
 
     def run_ilc(self, levels=None):
         """ILC 로 한계 ACLR: levels 없으면 지금 SG 레벨 한 번, 있으면 레벨마다 (DPD OFF → ILC)"""
+        self._soft = False
         self._wlog = False
         self._plog = False
         self._pk_note = False
@@ -1775,6 +1549,7 @@ class Engine:
 
     def run_sweep(self, levels, pout_stop=None):
         """파워 스윕: SG 레벨마다 DPD OFF 측정 → DPD 학습 (앞 레벨 계수로 시작) → DPD ON 측정"""
+        self._soft = False
         self.stop = False
         self.results = []
         self._cal_done = False
@@ -1792,7 +1567,7 @@ class Engine:
         auto = self.p.get("auto_model") and self.p.get("model", "gmp") == "gmp"
         n_it = int(self.p["iters"])
         nl = len([l for l in levels if l <= self.p["sg_max_dbm"] + 1e-9])
-        plan = lambda first: 1 + ((self.auto_n() + max(n_it - 1, 1)) if (first and auto) else (n_it + (0 if first else 1))) + self.ec_n()
+        plan = lambda first: 1 + ((self.auto_n() + max(n_it - 1, 1)) if (first and auto) else (n_it + (0 if first else 1)))
         self.eta_reset(sum(plan(i == 0) for i in range(nl)))
         try:
             for i, lv in enumerate(levels):
@@ -1826,8 +1601,14 @@ class Engine:
         st = getattr(self, "_resume", None)
         if not st or st.get("kind") != "ilc" or self.sig is None:
             return None
-        np.savez_compressed(path, u=np.asarray(st["u"], dtype=np.complex64), x=np.asarray(self.sig.x, dtype=np.complex64),
-                            sg=float(st["sg"]), best=float(st["best"][0]), fs=float(self.sig.fs), meta=json.dumps(meta, ensure_ascii=False))
+        return self.ilc_save_arrays(path, st["u"], self.sig.x, st["sg"], st["best"][0], self.sig.fs, meta)
+
+    @staticmethod
+    def ilc_save_arrays(path, u, x, sg, best, fs, meta):
+        """ILC 입력 u (정답) · 원래 신호 x · SG · 점수 → 파일 (돌리는 중 표의 ILC 줄 저장에도)"""
+        import json
+        np.savez_compressed(path, u=np.asarray(u, dtype=np.complex64), x=np.asarray(x, dtype=np.complex64),
+                            sg=float(sg), best=float(best), fs=float(fs), meta=json.dumps(meta, ensure_ascii=False))
         return path
 
     @staticmethod
@@ -1856,6 +1637,7 @@ class Engine:
         if self.sig is None:
             raise RuntimeError("신호가 없음")
         p = self.p
+        self._soft = bool(p.get("ilcm_stab", True))           # ILC 결과로 모델: 부드러운 최고값 제한
         xr = st.get("x_ref")
         if xr is not None:                                   # 저장한 ILC 를 불러온 경우: 지금 신호가 그때 신호와 같아야 함
             x0 = self.sig.x
@@ -1904,8 +1686,9 @@ class Engine:
             w, nm = self._ilcm_widen(x, u, w, nm)
             w, nm = self._ilcm_lin(x, u, w, nm)
             w, nm = self._ilcm_trap(x, u, w, nm)
+            w, nm = self._ilcm_stab(x, u, w, nm)
             w, nm = self._ilcm_focus(x, u, w, nm)
-            self.log_model_params("ILC→모델 학습", w, nm)        # JSH
+            self._ilcm_ampdiag(x, u, w)
             pd, n_clip = self.dpd_signal(w)
             self.log("  최고값 제한 (+%.1f dB) 에 걸린 샘플 %d 개%s" % (p["peak_lim_db"], n_clip,
                      "  ⚠ 많음 → 모델 출력 피크가 잘림 (4 카드 최고값 제한 ↑)" if n_clip > 0.0005 * len(pd) else ""))
@@ -1916,10 +1699,12 @@ class Engine:
             meth0 = p.get("method")
             if meth0 == "ilcm":
                 p["method"] = "ila"                        # 다듬기는 ILA (ILC 는 이미 했음)
+            if self.weight_bands() and p.get("refine_focus", True) and not is_nn(p) and p["method"] != "dla":
+                p["method"] = "dla"                        # 보정 기준이 집중 구간 · ACLR 채널 → 다듬기는 DLA (가중이 들어가는 방식)
+                self.log("  다듬기: DLA (보정 기준 '%s' 가중으로 집중 구간을 깎음 · 모델 계수만 바꿈)" % self.w_mode())
             self._keep_best = (C.aclr_worst(last), w, pd, last, y_al)
             try:
-                _r, w_fin, _pd = self._dpd_level(y_al, w, "ILC→모델 · ", stp, p.get("target_aclr"), start=(pd, last))
-                self.log_model_params("ILC→모델 최종 (ILA 다듬은 뒤)", w_fin)   # JSH
+                self._dpd_level(y_al, w, "ILC→모델 · ", stp, p.get("target_aclr"), start=(pd, last))
             finally:
                 p["method"] = meth0
                 self._keep_best = None
@@ -1972,8 +1757,7 @@ class Engine:
             _w0, nm0 = m0.fit(x, u, n_fit=nf)
             self.log("  선형 진단: 크기 · 위상만 %.1f dB → 긴 선형 등화 ±%d 탭 %.1f dB = %.1f dB 좋아짐 (크면 대역 안 리플 · 지연이 원인)"
                      % (nm0, nl, nml, nm0 - nml))
-            m2 = C.LinGMPModel(self.model.K, self.model.M, self.model.L, self.model.odd, p["lam"], nl,
-                               getattr(self.model, "lag", None), getattr(self.model, "lead", None))      # JSH: Lagging · Leading 그대로
+            m2 = C.LinGMPModel(self.model.K, self.model.M, self.model.L, self.model.odd, p["lam"], nl)
             w2, nm2 = m2.fit(x, u, n_fit=p["n_fit"])
             self.check()
             if nm2 < nm - 0.3:
@@ -2001,8 +1785,7 @@ class Engine:
         m0 = self.model
         try:
             t0 = time.time()
-            m2 = C.TrapGMPModel(m0.K, m0.M, m0.L, m0.odd, p["lam"], getattr(m0, "nlin", 0), self.sig.fs, taus,
-                                getattr(m0, "lag", None), getattr(m0, "lead", None))                     # JSH: Lagging · Leading 그대로
+            m2 = C.TrapGMPModel(m0.K, m0.M, m0.L, m0.odd, p["lam"], getattr(m0, "nlin", 0), self.sig.fs, taus)
             w2, nm2 = m2.fit(x, u, n_fit=p["n_fit"])
             self.check()
             gain = nm - nm2
@@ -2019,8 +1802,103 @@ class Engine:
             self.log("  (긴 메모리 진단 실패: %s)" % e)
         return w, nm
 
+    def _gap_val(self, x, u, pd):
+        """모델 출력 (제한 뒤) vs ILC 입력 차이의 인접 채널 전력 (dBc) - 계산만"""
+        fs = self.sig.fs
+        bwc, adj = self.p.get("ch_bw_mhz", 98.28) * 1e6, self.p.get("adj_mhz", 100.0) * 1e6
+        f, P = C.welch_psd(u, fs)
+        pc, _ = C.band_power(f, P, 0.0, bwc)
+        f, Pe = C.welch_psd(pd - u, fs)
+        pl, _ = C.band_power(f, Pe, -adj, bwc)
+        pu, _ = C.band_power(f, Pe, adj, bwc)
+        return float(10 * np.log10(max(pl, pu) / pc))
+
+    def _like(self, m, K, lam):
+        if isinstance(m, C.TrapGMPModel):
+            return C.TrapGMPModel(K, m.M, m.L, m.odd, lam, m.nlin, m.fs, m.taus_us)
+        if isinstance(m, C.LinGMPModel):
+            return C.LinGMPModel(K, m.M, m.L, m.odd, lam, m.nlin)
+        if type(m) is C.DPDModel:
+            return C.DPDModel(K, m.M, m.L, m.odd, lam)
+        return None
+
+    def _ilcm_stab(self, x, u, w, nm):
+        """(B) 피크 안정화: 차수 K 를 낮추고 · 정규화 λ 를 키운 조합을 계산으로 시험 →
+        '모델 출력 (부드러운 제한 뒤) vs ILC 입력' 인접 채널 차이가 가장 작은 것 (학습 오차보다 실제 막힘에 가까운 기준)"""
+        p = self.p
+        if not p.get("ilcm_stab", True):
+            return w, nm
+        m0 = self.model
+        if self._like(m0, m0.K, m0.lam) is None:
+            return w, nm
+        try:
+            t0 = time.time()
+            pd0, nc0 = self.dpd_signal(w)
+            g0 = self._gap_val(x, u, pd0)
+            best = (g0, m0, w, nm, nc0, "지금 (K%d · λ×1)" % m0.K)
+            Ks = [k for k in (m0.K, m0.K - 2, m0.K - 4) if k >= 3]
+            seen = {(m0.K, 1)}
+            for K_ in Ks:
+                for mul in (1, 10, 100):
+                    if (K_, mul) in seen:
+                        continue
+                    seen.add((K_, mul))
+                    self.check()
+                    m2 = self._like(m0, K_, m0.lam * mul)
+                    w2, nm2 = m2.fit(x, u, n_fit=p["n_fit"])
+                    m2.w = w2
+                    keep = self.model
+                    self.model = m2
+                    try:
+                        pd2, nc2 = self.dpd_signal(w2)
+                    finally:
+                        self.model = keep
+                    g2 = self._gap_val(x, u, pd2)
+                    self.log("    안정화 후보 K%d · λ×%d: 학습 오차 %.1f dB · 인접 채널 차이 %.1f dBc · 제한 넘는 샘플 %d" % (K_, mul, nm2, g2, nc2))
+                    if g2 < best[0] - 0.3:
+                        best = (g2, m2, w2, nm2, nc2, "K%d · λ×%d" % (K_, mul))
+            self.log("  피크 안정화 (부드러운 제한 + K · λ 시험, %.0f초): 지금 %.1f dBc (제한 넘음 %d) → %s %.1f dBc (제한 넘음 %d)"
+                     % (time.time() - t0, g0, nc0, best[5], best[0], best[4]))
+            if best[1] is not m0:
+                self.model, w, nm = best[1], best[2], best[3]
+                self.model.w = w
+                self.log("  ✔ %s 로 바꿈 (인접 채널 차이 %.1f → %.1f dBc)" % (best[5], g0, best[0]))
+        except Exception as e:
+            self.log("  (피크 안정화 실패: %s)" % e)
+        return w, nm
+
+    def _ilcm_ampdiag(self, x, u, w):
+        """(A) 진폭 구간별 오차: 신호 크기 (|x|) 구간마다 모델 출력 (제한 전) vs ILC 입력 오차 · 전체 오차 중 차지하는 몫"""
+        try:
+            z = self.model.apply(x, w)
+            a = np.abs(x)
+            qs = np.quantile(a, [0.5, 0.9, 0.99, 0.999])
+            edges = [0.0] + list(qs) + [np.inf]
+            names = ["아래 50%", "50~90%", "90~99%", "99~99.9%", "위 0.1% (피크)"]
+            e2 = np.abs(z - u) ** 2
+            tot = float(np.sum(e2)) or 1.0
+            out = []
+            for k in range(5):
+                m = (a >= edges[k]) & (a < edges[k + 1])
+                if not np.any(m):
+                    continue
+                nm_ = 10 * np.log10(np.sum(e2[m]) / max(np.sum(np.abs(u[m]) ** 2), 1e-30))
+                out.append("%s %.1f dB (%.0f%%)" % (names[k], nm_, 100 * np.sum(e2[m]) / tot))
+            self.log("  진폭 구간별 학습 오차 (괄호 = 전체 오차 중 몫): " + " · ".join(out))
+            pk = np.sum(e2[a >= qs[2]]) / tot
+            if pk > 0.5:
+                self.log("    → 오차의 %.0f%% 가 위 1%% 피크에 몰림 = 피크 근처 (포화) 에서 모델이 출렁임 · 피크 안정화 · CFR · Pout 이 원인 쪽" % (100 * pk))
+            elif pk < 0.2:
+                self.log("    → 오차가 피크가 아니라 고르게 퍼짐 = 피크 문제 아님 (모델 구조 · 측정 잡음 쪽)")
+        except Exception as e:
+            self.log("  (진폭 구간별 진단 실패: %s)" % e)
+
     def _ilcm_focus(self, x, u, w, nm):
         """집중 구간을 썼으면 같은 가중으로 다시 학습해서 바꿈 → (w, nm)"""
+        st = getattr(self, "_resume", None) or {}
+        used = st.get("w_mode_used") or (st.get("meta") or {}).get("w_mode")
+        if used == "time":
+            return w, nm                                   # ILC 가 시간 영역 → 고른 정답 → 그냥 학습이 맞음
         try:
             r_ = self._fit_focus(self.model, x, u)
         except Exception as e:
@@ -2053,9 +1931,23 @@ class Engine:
                                  Ks=(5, 7, 9, 11), Ms=Ms, Ls=Ls, cancelled=lambda: self.stop)
             self.check()
             pk = C.pick_models(res, 1)
+            if res:
+                # 조합마다 검증 오차 (학습에 안 쓴 구간으로 잰 오차 · 계산만) - 좋은 순 12 개 + 지금 조합
+                srt = sorted(res, key=lambda t_: t_[0])
+                ch = tuple(pk[0][2:5]) if pk else None
+                self.log("  K·M·L 조합별 검증 오차 (계산만 · 좋은 순 · ★ = 고른 것 · ◆ = 지금 4 카드 값):")
+                cur = [t_ for t_ in res if (t_[2], t_[3], t_[4]) == kml0]
+                show = srt[:12] + [t_ for t_ in cur if t_ not in srt[:12]] + [t_ for t_ in srt[12:] if ch and (t_[2], t_[3], t_[4]) == ch]
+                for t_ in show:
+                    k3 = (t_[2], t_[3], t_[4])
+                    self.log("    %s K%-2d M%-2d L%d : %6.1f dB · 계수 %d%s" % (
+                        "★" if k3 == ch else ("◆" if k3 == kml0 else " "), t_[2], t_[3], t_[4], t_[0], t_[1],
+                        "  (지금)" if k3 == kml0 and k3 != ch else ""))
+                if len(srt) > 12:
+                    self.log("    … 나머지 %d 조합 (가장 나쁜 K%d M%d L%d %.1f dB)" % (len(srt) - len(show), srt[-1][2], srt[-1][3], srt[-1][4], srt[-1][0]))
             if pk:
                 nmv, nc, K, M, L = pk[0]
-                self.log("  %d 조합 %.1f초 · 가장 좋은: K%d M%d L%d (검증 오차 %.1f dB, %d 계수)"
+                self.log("  %d 조합 %.1f초 · 가장 좋은: K%d M%d L%d (검증 오차 %.1f dB, %d 계수 · 오차가 비슷하면 계수 적은 쪽)"
                          % (len(res), time.time() - t1, K, M, L, nmv, nc))
                 if (K, M, L) != kml0:
                     m2 = self.make_model(K, M, L)
@@ -2065,9 +1957,6 @@ class Engine:
                         self.model, w, nm = m2, w2, nm2
                         self.model.w = w
                         p["K"], p["M"], p["L"] = K, M, L
-                        if p.get("L_lag") is not None or p.get("L_lead") is not None:     # 넓혀 찾은 모델은 L 하나로 앞뒤 같음
-                            p["L_lag"] = p["L_lead"] = None
-                            self.log("  (Lagging · Leading 따로 정한 값 대신 찾은 L%d 로 앞뒤 같게)" % L)
                         self.tag = method_label(p) + (" ← ILC" if str(getattr(self, "tag", "")).endswith("← ILC") else "")
                         self.log("  ✔ K%d M%d L%d 로 바꿈: 학습 오차 %.1f → %.1f dB" % (K, M, L, nm0, nm))
                         cb = getattr(self, "on_kml", None)
