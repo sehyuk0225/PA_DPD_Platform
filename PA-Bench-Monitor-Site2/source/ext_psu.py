@@ -430,6 +430,63 @@ def attach(app):
     attach_panel(app, ext)
     attach_pk_field(app, ext)
     attach_top_row(app, ext)
+    attach_addr_ui1(app)
+
+
+def attach_addr_ui1(app):
+    """Site1: '파워서플라이 연결 · SCPI' 의 장비 찾기 목록 아래에 E36155A · N6705C 주소 직접 입력 칸 + 연결 버튼
+    (기존 주소 칸과 같은 값을 공유 - 어느 쪽에서 바꿔도 같이 바뀜)"""
+    import tkinter as tk
+    from tkinter import ttk
+    P = getattr(app, "psu_panel", None)
+    if P is None or not hasattr(P, "box_extra"):
+        return
+    box = P.box_extra
+    first = None
+    for w in box.winfo_children():
+        if "Labelframe" in w.winfo_class():
+            first = w
+            break
+    lf = ttk.LabelFrame(box, text=" 장비 주소 (직접 입력 · 위 목록 더블클릭으로도 넣기) ", padding=8)
+    if first is not None:
+        lf.pack(fill="x", padx=8, pady=(4, 4), after=first)
+    else:
+        lf.pack(fill="x", padx=8, pady=(4, 4))
+    g = ttk.Frame(lf)
+    g.pack(fill="x")
+    btn = {}
+    for r_, (k, txt, var) in enumerate((("e", "E36155A (드레인 Vdd)", P.var_e), ("n", "N6705C (게이트 바이어스)", P.var_n))):
+        ttk.Label(g, text=txt).grid(row=r_, column=0, sticky="w", pady=2)
+        en = ttk.Entry(g, textvariable=var, width=34)
+        en.grid(row=r_, column=1, sticky="we", padx=6, pady=2)
+        b = ttk.Button(g, text="연결", width=8, command=lambda k=k: P.connect(k))
+        b.grid(row=r_, column=2, pady=2)
+        en.bind("<Return>", lambda e, k=k: (P.inst.get(k) is None) and P.connect(k))
+        btn[k] = b
+        lb = ttk.Label(g, text="", foreground="#666")
+        lb.grid(row=r_, column=3, sticky="w", padx=6)
+        btn[k + "_l"] = lb
+    g.columnconfigure(1, weight=1)
+    ttk.Label(lf, text="예: GPIB0::6::INSTR · TCPIP0::192.168.0.13::inst0::INSTR · 장비 없이: DEMO   "
+                       "(주소를 바꿨으면 [연결 해제] 후 다시 [연결])", foreground="#607d8b").pack(anchor="w", pady=(4, 0))
+    ttk.Label(lf, text="※ 같은 장비를 GPIB 와 LAN 두 주소로 따로 넣지 마세요 (드라이버 앰프 · 외부 PK 칸 포함) - 읽기가 꼬여 전류를 못 읽을 수 있음",
+              foreground="#b26a00").pack(anchor="w")
+
+    def sync():
+        try:
+            for k in ("e", "n"):
+                t = (P.btn_e if k == "e" else P.btn_n).cget("text")
+                if btn[k].cget("text") != t:
+                    btn[k].configure(text=t)
+                idn = (P.lbl_e_idn if k == "e" else P.lbl_n_idn).cget("text")
+                on = P.inst.get(k) is not None
+                tx = (", ".join(idn.split(",")[1:3]) if on else "연결 안 됨")[:40]
+                if btn[k + "_l"].cget("text") != tx:
+                    btn[k + "_l"].configure(text=tx, foreground="#2e7d32" if on else "#999")
+        except Exception:
+            return
+        app.root.after(500, sync)        # (lf.after 쓰면 설정 불러오기 때 창 닫기가 멈춤)
+    sync()
 
 
 def gates_on(P):
@@ -638,15 +695,34 @@ def attach_panel(app, ext):
     orig_read = P.read_job
 
     def read2(full=True):
+        busy = bool(getattr(app, "sweep", None) or getattr(app, "ramp", None))
+        now = time.time()
+        if busy and full and now - getattr(ext, "_full_t", 0) < 3.0:
+            full = False          # 자동 측정 중엔 설정값 · 출력 상태 (질문 6 개 더) 는 3 초에 한 번 → Vdd 전류를 자주 읽게
+        if full:
+            ext._full_t = now
+        t0 = time.time()
         orig_read(full)
-        # 외부 전원 읽기는 1 초에 한 번만 (예전: Vdd 를 읽을 때마다 같이 읽어 Vdd 전류 읽기가 느려지고 · 끊김 → 측정 '전류 못 읽음')
-        if time.time() - getattr(ext, "_rd_t", 0) < 1.0:
+        dt = time.time() - t0
+        if dt > 1.5 and time.time() - getattr(ext, "_slow_t", 0) > 10:      # 진단: 전원 한 번 읽는 데 오래 걸림
+            ext._slow_t = time.time()
+            P.post("log", "⚠ 전원 읽기 느림: E36155A · N6705C 한 번 읽는 데 %.1f 초%s (GPIB 응답 지연 · 시간 초과 의심)"
+                   % (dt, " (설정값 포함)" if full else ""), "err")
+        # 외부 전원 (드라이버 앰프 · 외부 PK) 읽기: 자동 측정 · 천천히 내리기 중엔 아예 안 읽음 (켜고 끄기만)
+        #   E3631A 같은 외부 전원은 한 번 읽는 데 (출력 고르기 + 질문 5 개) 오래 걸려, 같은 GPIB 줄의 Vdd 전류 읽기가 밀림
+        #   → Mod. 측정 '전류 못 읽음' → 파워 내려 다시 재기 (v2.5.88 ~ v2.5.103). 측정 아닐 땐 2 초에 한 번
+        if busy or time.time() - getattr(ext, "_rd_t", 0) < 2.0:
             return
         ext._rd_t = time.time()
+        t0 = time.time()
         try:
             read()
         except Exception:
             pass
+        dt = time.time() - t0
+        if dt > 1.0 and time.time() - getattr(ext, "_slow2_t", 0) > 10:
+            ext._slow2_t = time.time()
+            P.post("log", "⚠ 외부 전원 (드라이버 앰프 · 외부 PK) 읽기 %.1f 초 - 주소 · 연결 확인" % dt, "err")
     P.read_job = read2
 
     def refresh():

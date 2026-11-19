@@ -26,11 +26,12 @@ except Exception as _e:                     # numpy 가 없는 등
     E = None
     _IMPORT_ERR = _e
 
-VERSION = "v0.2.3.85"
+VERSION = "v0.2.3.89"
 APP = "PA DPD Tester"
 
 SET_DIR = os.path.join(os.environ.get("APPDATA") or os.path.expanduser("~"), "PADPDTester")
 SET_FILE = os.path.join(SET_DIR, "settings.json")
+ILC_DIR = os.path.join(SET_DIR, "ilc")                       # ILC 결과 저장 (끝날 때마다 자동 · 최근 60 개)
 
 # PA Bench Monitor 와 같은 색 · 테마
 BG = "#0b0f14"
@@ -1765,9 +1766,22 @@ class App:
         self.btn_more.pack(side="left", fill="x", expand=True)
         ttk.Entry(mf_, textvariable=self.v["more_n"], width=4, justify="right").pack(side="left", padx=(6, 3))
         ttk.Label(mf_, text="번 더 (끝난 · 중지한 DPD · ILC 결과에서)", style="Unit.TLabel").pack(side="left")
-        self.btn_ilc2m = ttk.Button(b, text="🧠 ILC 결과로 모델 만들기 (ILC 다시 안 돌림 → 4 카드 모델 · K·M·L 로 학습 → 반복)",
+        f9_ = ttk.Frame(b, style="Card.TFrame")
+        f9_.grid(row=9, column=0, columnspan=2, sticky="ew", pady=(4, 0))
+        self.btn_ilc2m = ttk.Button(f9_, text="🧠 ILC 결과로 모델 만들기 (ILC 다시 안 돌림 → 4 카드 모델로 학습 → 반복)",
                                     command=lambda: self.start(True, from_ilc=True))
-        self.btn_ilc2m.grid(row=9, column=0, columnspan=2, sticky="ew", pady=(4, 0))
+        self.btn_ilc2m.pack(side="left", fill="x", expand=True)
+        bl_ = ttk.Button(f9_, text="📂 저장한 ILC", command=self.ilc_open)
+        bl_.pack(side="left", padx=(4, 0))
+        Tip(bl_, "저장한 ILC 결과 불러오기\nILC 가 끝날 때마다 자동으로 저장됨 (샘플 · 주파수 · ACLR · 시각이 파일 이름에).\n"
+                 "불러오면 ILC 를 다시 안 돌리고 바로 4 카드 모델 (GMP 등) 로 학습 → 측정.\n"
+                 "신호 (1 카드) 는 ILC 때와 같아야 함 (다르면 알려 줌)")
+        self.v["ilcm_widen"] = tk.BooleanVar(value=bool(self.s.get("ilcm_widen", True)))
+        cw_ = ttk.Checkbutton(f9_, text="오차 크면 K·M·L 넓힘", variable=self.v["ilcm_widen"], style="Card.TCheckbutton")
+        cw_.pack(side="left", padx=(6, 0))
+        Tip(cw_, "ILC 결과로 모델 만들기: 학습 오차 자동 넓히기\n지금 K · M · L 로 배운 오차가 −40 dB 보다 크면 (= ILC 입력을 다 못 흉내 냄)\n"
+                 "K 5~11 × M 1~8 × L 0~3 을 계산만으로 (측정 없이) 다시 찾아 더 좋은 조합으로 바꿈 (GMP 만).\n"
+                 "끝나면 로그에 '판정': ILC 최고 vs 모델 최고 · 학습 오차 → 모델 한계인지 측정 한계인지")
         Tip(self.btn_ilc2m, "ILC 결과로 모델 만들기\n방금 끝낸 (또는 중지한) [한계 ACLR (ILC)] 의 가장 좋았던 입력을 정답으로\n"
                  "4 카드 모델 (GMP 등 · K · M · L) 이 '원래 신호 → 그 입력' 을 배움 → 측정 → 반복 횟수만큼 ILA 로 다듬음.\n"
                  "ILC 를 다시 돌리지 않아 빠름 · 같은 SG 레벨 · 목표 Pout 고정이 켜져 있으면 그대로.")
@@ -1796,6 +1810,13 @@ class App:
                                        command=lambda: (self.s.__setitem__("fsw_dfl_auto", bool(self.v["fsw_dfl_auto"].get())),
                                                         self.dfl_label()))
         self.chk_dfl.grid(row=13, column=0, columnspan=2, sticky="w", pady=(2, 0))
+        self.v["fsw_guard"] = tk.BooleanVar(value=bool(self.s.get("fsw_guard", True)))
+        cg_ = ttk.Checkbutton(b, text="측정 중 FSW 화면 놓치면 [시작] 때 FSW 설정으로 되돌리고 다시", variable=self.v["fsw_guard"],
+                              style="Card.TCheckbutton")
+        cg_.grid(row=14, column=0, columnspan=2, sticky="w", pady=(2, 0))
+        Tip(cg_, "FSW 화면 놓침 자동 복구\n[시작] 할 때 지금 FSW 설정 (맞춰 둔 화면 · 채널 · 레벨) 을 FSW 안에 저장 →\n"
+                 "측정이 실패하거나 (응답 없음 · 데이터 오류) Gain 이 갑자기 떨어지면 그 설정을 다시 불러오고 그 측정만 다시 잼.\n"
+                 "한 실행에 최대 5 번. 저장은 FSW 안 C:\\R_S\\Instr\\user\\pa_dpd_guard.dfl")
         self.dfl_label()
         self.run_mode_changed()
 
@@ -2112,7 +2133,7 @@ class App:
         return (st or "(샘플 종류 없음)") + ("" if bw == "100" else " · %s MHz" % bw)
 
     # 샘플과 상관없는 것 (장비 주소 등) · 신호 파일 위치와 대역은 따로 (대역마다 공통)
-    TYPE_SKIP = ("fsw_dfl_auto", "smw_host", "fsw_host", "b_stype", "b_rec", "y_q", "wv_path", "bw_mode", "torch_dir", "spec_view",
+    TYPE_SKIP = ("fsw_dfl_auto", "fsw_guard", "smw_host", "fsw_host", "b_stype", "b_rec", "y_q", "wv_path", "bw_mode", "torch_dir", "spec_view",
                  "cal_mod", "cal_every", "pout_src")       # Pout 맞춤 방식은 대역 · 샘플 종류 상관없이 하나 (100 ↔ 400 바꿔도 그대로)
 
     def type_keys(self):
@@ -2938,6 +2959,8 @@ class App:
         p["odd_only"] = bool(self.v["odd_only"].get())
         p["auto_model"] = bool(self.v["auto_model"].get())
         p["auto_wide"] = bool(self.v["auto_wide"].get())
+        p["ilcm_widen"] = bool(self.v["ilcm_widen"].get())
+        p["fsw_guard"] = bool(self.v["fsw_guard"].get())
         p["bw_mode"] = self.v["bw_mode"].get()
         p["file_up"] = 1                                # SMW 샘플레이트 올리기는 안 씀 (SMW ARB 한계 → -222 Data out of range)
         p["cap_up"] = 1
@@ -3138,14 +3161,20 @@ class App:
                 self.run_bias = None
         if more is not None:
             # 이어서: 끝난 (또는 중지한) 실행의 엔진 · 계수 · 입력을 그대로 (표 · 그래프 · 기록도 이어 붙임)
-            src = self.engine if (self.engine is not None and getattr(self.engine, "_resume", None)) else getattr(self, "_last_eng", None)
-            if src is None or not getattr(src, "_resume", None):
-                messagebox.showinfo(APP, "이어서 할 결과가 없습니다. DPD 또는 ILC 를 먼저 실행하세요.")
-                return
-            if from_ilc and (src._resume or {}).get("kind") != "ilc":
-                messagebox.showinfo(APP, "ILC 결과가 없습니다. 5 카드 [한계 ACLR (ILC)] 를 먼저 실행하세요\n(그 뒤 다른 DPD 를 돌렸으면 ILC 를 다시).")
-                return
-            eng = src if src is self.engine else self._live_engine(src)
+            pend = getattr(self, "_ilc_pending", None) if from_ilc else None
+            if pend is not None:                           # 저장한 ILC 결과를 불러와서 → 그걸로 모델 만들기
+                self._ilc_pending = None
+                eng = self.get_engine(p)
+                eng._resume = pend
+            else:
+                src = self.engine if (self.engine is not None and getattr(self.engine, "_resume", None)) else getattr(self, "_last_eng", None)
+                if src is None or not getattr(src, "_resume", None):
+                    messagebox.showinfo(APP, "이어서 할 결과가 없습니다. DPD 또는 ILC 를 먼저 실행하세요\n(ILC 결과로 모델: 📂 저장한 ILC 로 불러와도 됨).")
+                    return
+                if from_ilc and (src._resume or {}).get("kind") != "ilc":
+                    messagebox.showinfo(APP, "ILC 결과가 없습니다. 5 카드 [한계 ACLR (ILC)] 를 먼저 실행하거나\n📂 저장한 ILC 로 불러오세요.")
+                    return
+                eng = src if src is self.engine else self._live_engine(src)
             for k in ("target_aclr", "focus_mhz", "focus_w", "focus_on", "w_mode", "pout_src", "cal_every", "pout_strict", "pout_tol", "bad_gain_db", "iq_avg", "settle_s", "aclr_src", "mod_every", "fsw_park",
                       "ilc_gain", "mu", "peak_lim_db"):
                 if k in p:
@@ -3156,6 +3185,13 @@ class App:
                         eng.p[k] = p[k]
             self.cmp_mode = False
             self.cur_run = getattr(self, "_last_run", None)
+            if pend is not None:                           # 불러온 ILC: 새 기록으로 (표 · 그래프 새로)
+                self.results = []
+                self._res0 = 0
+                for i in self.tree.get_children():
+                    self.tree.delete(i)
+                self.clear_view()
+                self.new_run(p, False, False)
         else:
             eng = self.get_engine(p)
             self.results = []
@@ -3240,6 +3276,7 @@ class App:
                     self.q.put(("cmp", (list(eng.compare), getattr(eng, "compare_off", None))))
                 elif ilc:
                     eng.run_ilc(levels if sweep else None)
+                    self.ilc_autosave(eng, p)
                 elif sweep:
                     eng.run_sweep(levels, pstop if pstop == pstop else None)
                 else:
@@ -3941,7 +3978,7 @@ class App:
                 eng.stop = False
                 if getattr(eng, "fsw", None) is None or getattr(eng, "smw", None) is None:
                     eng.smw = eng.fsw = None             # 반쯤 끊긴 연결은 버리고 새로
-                eng.connect()
+                eng._connect0()
                 eng.go_local()
                 self.q.put(("log", "장비 연결됨 (앞 패널은 Local 로 둠)"))
             except Exception as e:
@@ -5059,6 +5096,61 @@ class App:
         pd, sg, ghz, y = st
         return eng, r, E.np.asarray(pd, dtype=complex), sg, ghz, E.np.asarray(y, dtype=complex)
 
+    def ilc_autosave(self, eng, p):
+        """ILC 가 끝나면 결과를 파일로 (작업 스레드에서) → 📂 저장한 ILC 로 나중에 바로 모델 학습"""
+        try:
+            st = getattr(eng, "_resume", None)
+            if not st or st.get("kind") != "ilc":
+                return
+            os.makedirs(ILC_DIR, exist_ok=True)
+            r = st["best"][1] if isinstance(st["best"][1], dict) else {}
+            stype = (self.v["b_stype"].get().strip() if "b_stype" in self.v else "") or "샘플"
+            stype = re.sub(r'[\\/:*?"<>|]', "_", stype)[:40]
+            name = "ILC_%s_%.3fGHz_%.1fdBc_Pout%.2f_%s.npz" % (stype, p["freq_ghz"], st["best"][0], r.get("pout", float("nan")),
+                                                                 time.strftime("%Y%m%d_%H%M%S"))
+            meta = dict(when=time.strftime("%Y-%m-%d %H:%M"), stype=stype, freq=p["freq_ghz"], sg=st["sg"], best=st["best"][0],
+                        pout=r.get("pout"), r={k: r.get(k) for k in ("aclr_l", "aclr_u", "pout", "label") if k in r},
+                        sig=self.v["wv_path"].get() if "wv_path" in self.v else "", ver=VERSION)
+            path = eng.ilc_save(os.path.join(ILC_DIR, name), meta)
+            if path:
+                self.q.put(("log", "  💾 ILC 결과 저장: %s (📂 저장한 ILC 로 나중에 바로 모델 학습)" % name))
+            fs = sorted((f for f in os.listdir(ILC_DIR) if f.lower().endswith(".npz")),
+                        key=lambda f: os.path.getmtime(os.path.join(ILC_DIR, f)))
+            for f in fs[:-60]:
+                try:
+                    os.remove(os.path.join(ILC_DIR, f))
+                except Exception:
+                    pass
+        except Exception as e:
+            self.q.put(("log", "  ⚠ ILC 결과 저장 못 함: %s" % e))
+
+    def ilc_open(self):
+        """📂 저장한 ILC 불러오기 → 바로 ILC 결과로 모델 만들기"""
+        if E is None or self.worker:
+            return
+        os.makedirs(ILC_DIR, exist_ok=True)
+        path = filedialog.askopenfilename(parent=self.root, title="저장한 ILC 결과 불러오기", initialdir=ILC_DIR,
+                                          filetypes=[("ILC 결과", "*.npz"), ("모든 파일", "*.*")])
+        if not path:
+            return
+        try:
+            st = E.Engine.ilc_load(path)
+        except Exception as e:
+            messagebox.showwarning(APP, "불러오기 실패: %s" % e, parent=self.root)
+            return
+        m = st.get("meta") or {}
+        self._ilc_pending = st
+        txt = ("%s\n\n샘플 %s · %s GHz · ILC 최고 %.1f dBc · SG %.2f dBm · Pout %s\n%s\n\n"
+               "지금 4 카드 모델 (%s) 로 바로 학습 → 측정할까요?\n(1 카드 신호는 ILC 때와 같아야 함)"
+               % (os.path.basename(path), m.get("stype", "?"), m.get("freq", "?"), st["best"][0], st["sg"],
+                  ("%.2f dBm" % m["pout"]) if isinstance(m.get("pout"), (int, float)) else "?", m.get("when", ""),
+                  self.model_text(self.params(), None) if hasattr(self, "model_text") else ""))
+        self.log("📂 ILC 결과 불러옴: %s (ILC 최고 %.1f dBc)" % (os.path.basename(path), st["best"][0]))
+        if messagebox.askyesno(APP, txt, parent=self.root):
+            self.start(True, from_ilc=True)
+        else:
+            self.log("  → [ILC 결과로 모델 만들기] 를 누르면 불러온 ILC 로 시작")
+
     def _live_engine(self, src):
         """중지된 실행의 엔진이면 새로 연결한 엔진으로 (신호 · 보관 신호는 넘김)"""
         if self.engine is not None:
@@ -5442,7 +5534,7 @@ class App:
             BL.set_busy(True)
             try:
                 eng.stop = False
-                eng.connect()
+                eng._connect0()
                 base, bf = eng.p["sg_dbm"], eng.p["freq_ghz"]
                 eng.p["sg_dbm"], eng.p["freq_ghz"] = sg, ghz
                 eng._force_mod = eng.p.get("aclr_src") != "iq"

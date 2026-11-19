@@ -51,7 +51,7 @@ except ImportError:
             pass
 
 APP_NAME = "PA Bench Monitor"
-VERSION = "v2.5.100"
+VERSION = "v2.5.109"
 
 BG = "#0b0f14"
 FG_DIM = "#7d8a99"
@@ -7011,6 +7011,27 @@ class BenchApp:
             self.lbl_rec.configure(text=self.fq_prefix(sw) + "자동 측정 %d/%d  SG %.2f dBm  %s %.1f초" % (
                 sw["i"] + 1, len(sw["levels"]), lvl, "안정화" if now < sw["confirm"] + settle else "평균 중", ready - now))
             return
+        # 평균 구간에 전류가 하나도 없으면 바로 '전류 못 읽음' 으로 파워를 내렸다 다시 재지 말고 최대 3 초 기다림
+        #   Mod. = 파워서플라이 Vdd 전류 (직접 읽기 요청) · Pulse = RTO 새 파형 (트리거가 늦게 걸리거나 파형이 늦게 올 때)
+        t1_ = sw["confirm"] + settle
+        mod_ = self.mode == "mod"
+        smp = self.psu_samples if mod_ else self.cur_samples
+        if not any(t_ >= t1_ and math.isfinite(i_) for t_, i_ in list(smp)[-60:]):
+            w0 = sw.setdefault("cur_wait", now)
+            pp = getattr(self, "psu_panel", None)
+            src_ok = (pp is not None and pp.inst.get("e") is not None) if mod_ else bool(getattr(getattr(self, "scope", None), "connected", False))
+            if now - w0 < 3.0 and src_ok:
+                if mod_ and now - sw.get("cur_req", 0) > 0.4:
+                    sw["cur_req"] = now
+                    pp.worker.tasks.put(lambda: pp.read_job(full=False))
+                self.lbl_rec.configure(text=self.fq_prefix(sw) + "자동 측정 %d/%d  SG %.2f dBm  %s 전류 읽는 중…" % (
+                    sw["i"] + 1, len(sw["levels"]), lvl, "Vdd (파워서플라이)" if mod_ else "RTO (새 파형)"))
+                return
+            if now - w0 >= 3.0:
+                self.status("SG %.2f dBm: %s 전류를 3 초 동안 못 읽음 → 다시 재기 (%s)" % (
+                    lvl, "Vdd" if mod_ else "RTO", "파워서플라이 연결 · 전원 읽기 확인" if mod_ else
+                    "RTO 트리거 · 채널 · 파형 확인 - 화면 'stale' 이면 트리거가 안 걸림"), "#d4a017")
+        sw.pop("cur_wait", None)
         self.record(manual=True, t1=sw["confirm"] + settle, t2=now)
         row = self.find_row(self.smw["f"], lvl)
         bad = self.check_anomaly(row, sw) if self.var_sw_retry.get() else ""
@@ -7508,10 +7529,10 @@ class BenchApp:
             pout_raw = self.fsw["y"]
         vmeas = None
         if self.mode == "mod":
-            # Mod.: 전류는 E36155A 전원에서 (평균 구간 값, 없으면 1초 안의 마지막 값)
+            # Mod.: 전류는 E36155A 전원에서 (평균 구간 값, 없으면 평균 시작 뒤 · 3 초 안의 마지막 값)
             cur, nc = self.window_avg(self.psu_samples, t1, t2)
             if cur is None and self.psu.get("conn") and self.psu.get("i") is not None \
-                    and math.isfinite(self.psu["i"]) and now - self.psu["t"] < 1.0:
+                    and math.isfinite(self.psu["i"]) and now - self.psu["t"] < 3.0 and self.psu["t"] >= t1 - 0.5:
                 cur = self.psu["i"]
             pass
         else:
@@ -8366,10 +8387,23 @@ auto_bias_off=self.var_auto_bias_off.get(), gain_drop=self.var_gain_drop.get(),
             pass
         try:   # 남은 예약 작업 취소 (설정 불러오기로 화면을 다시 열 때 오류 방지)
             for aid in self.root.tk.splitlist(self.root.tk.call("after", "info")):
-                self.root.after_cancel(aid)
+                try:
+                    self.root.tk.call("after", "cancel", aid)   # (after_cancel 은 다른 칸이 등록한 명령까지 지워 창 닫기가 멈춤)
+                except tk.TclError:
+                    pass
         except tk.TclError:
             pass
-        self.root.destroy()
+        try:
+            self.root.destroy()
+        except tk.TclError:
+            try:
+                self.root.tk.call("destroy", ".")             # 그래도 남은 게 있으면 Tcl 쪽에서 바로 닫음
+            except tk.TclError:
+                pass
+            try:
+                self.root.quit()
+            except tk.TclError:
+                pass
         return True
 
     # ------------------------------------------------ 설정 파일 (저장 / 불러오기)

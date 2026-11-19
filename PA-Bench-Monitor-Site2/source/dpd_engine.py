@@ -83,7 +83,81 @@ class Engine:
         if self.stop:
             raise Stop()
 
+    GUARD = r"C:\R_S\Instr\user\pa_dpd_guard.dfl"
+
+    def fsw_guard_save(self):
+        """[시작] 할 때 FSW 지금 설정 (사용자가 맞춰 둔 화면 · 채널) 을 FSW 안에 저장 → 측정 중 화면을 놓치면 되돌림"""
+        self._guard = None
+        if not self.p.get("fsw_guard", True) or self.fsw is None:
+            return
+        io = getattr(self.fsw, "io", None)
+        if io is None:
+            self._guard = "demo"
+            return
+        try:
+            io.write("*CLS")
+            io.write("MMEM:STOR1:STAT 1,'%s'" % self.GUARD)
+            io.opc()
+            self._guard = self.GUARD
+            self.log("  FSW 지금 설정 저장 (측정 중 화면을 놓치면 이 설정으로 되돌리고 다시 잼)")
+        except Exception as e:
+            self.log("  ⚠ FSW 설정 저장 못 함 (%s) → 화면 놓침 자동 복구 없이 진행" % e)
+
+    def fsw_guard_restore(self, why=""):
+        """저장해 둔 FSW 설정으로 되돌림 (연결이 끊겼으면 다시 연결) → 프로그램이 만든 I/Q 채널 기억은 버리고 다음 측정 때 새로"""
+        g = getattr(self, "_guard", None)
+        if not g:
+            return False
+        self.log("  ↺ FSW 화면을 놓침%s → [시작] 때 FSW 설정으로 되돌리고 이 측정만 다시" % ((" (%s)" % why) if why else ""))
+        f = self.fsw
+        if g != "demo":
+            ok = False
+            for k in range(2):
+                try:
+                    if k == 1:                                  # 연결이 끊긴 것 같음 → 새로 연결
+                        try:
+                            f.close()
+                        except Exception:
+                            pass
+                        fh, fp = I.clean_host(self.p["fsw_host"], int(self.p.get("fsw_port") or 5025))
+                        nf = I.FSW(fh, fp)
+                        nf.log = self.log
+                        nf.prev = getattr(f, "prev", None)
+                        for a_ in ("park", "acp_cfg", "span_fix"):
+                            if hasattr(f, a_):
+                                setattr(nf, a_, getattr(f, a_))
+                        self.fsw = f = nf
+                    io = f.io
+                    try:
+                        io.write("ABOR")
+                    except Exception:
+                        pass
+                    io.write("*CLS")
+                    io.write("MMEM:LOAD1:STAT 1,'%s'" % g)
+                    io.opc()
+                    io.write("SYST:DISP:UPD ON")
+                    ok = True
+                    break
+                except Exception as e:
+                    self.log("    FSW 되돌리기 %d 번째 실패: %s" % (k + 1, e))
+            if not ok:
+                return False
+        for a_, v_ in (("via", None), ("_parked", False), ("tidied", False), ("made", False), ("fs", None)):
+            try:
+                setattr(f, a_, v_)
+            except Exception:
+                pass
+        self._ref_mem = None                                    # FSW Ref 기억도 버림 → 자동 레벨부터
+        self._guard_n = getattr(self, "_guard_n", 0) + 1
+        time.sleep(0.5)
+        return True
+
     def connect(self):
+        self._guard_n = 0
+        self._connect0()
+        self.fsw_guard_save()
+
+    def _connect0(self):
         if self.smw is None:
             self.log("장비 연결: SMW %s · FSW %s" % (self.p["smw_host"], self.p["fsw_host"]))
             self.smw, self.fsw = I.open_pair(self.p["smw_host"], self.p["fsw_host"],
@@ -292,6 +366,31 @@ class Engine:
                 po = (po + r2["pout"]) / 2
         return po
 
+    def gain_ok(self):
+        """목표 Pout 을 맞췄을 때의 Gain 기억 (다음에 SG 최대인데 Pout 이 안 나오면 비교용 · 프로그램 켜 있는 동안)"""
+        r = getattr(self, "_last_r", None)
+        if r and r.get("gain") == r.get("gain"):
+            self._g_ok = (float(r["gain"]), float(self.p.get("freq_ghz", 0)), time.strftime("%H:%M"))
+
+    def gain_note(self, tgt, po):
+        """SG 최대인데 원하는 Pout 이 안 나옴 → 지금 Gain 을 로그에 (SMA 커넥터 · 케이블 문제 확인용)"""
+        r = getattr(self, "_last_r", None)
+        if not r or r.get("gain") != r.get("gain"):
+            return
+        if time.time() - getattr(self, "_gn_t", 0) < 20:
+            return
+        self._gn_t = time.time()
+        g = float(r["gain"])
+        po = po if po == po else r.get("pout", float("nan"))
+        self.log("  ⚠ Gain %.2f dB  (SG 최대 %.2f dBm · Pin %.2f dBm → Pout %.2f dBm, 목표 %.2f 보다 %.2f dB 모자람)"
+                 % (g, float(self.p.get("sg_max_dbm", 0)), r.get("pin", float("nan")), po, tgt, tgt - po))
+        ok = getattr(self, "_g_ok", None)
+        if ok and abs(ok[1] - float(self.p.get("freq_ghz", 0))) < 1e-6 and ok[0] - g > 0.5:
+            self.log("    목표 맞췄을 때 (%s) Gain %.2f dB 보다 %.1f dB 낮음 → SMA 커넥터 · 케이블 · 감쇠기 · 손실 칸 · 바이어스 확인"
+                     % (ok[2], ok[0], ok[0] - g))
+        else:
+            self.log("    평소 Gain 보다 낮으면 SMA 커넥터 · 케이블 · 손실 칸 · 바이어스 확인 · 아니면 2 카드 SG 최대 ↑")
+
     def hold_pout(self, pd, label):
         """목표 Pout 딱 맞추기: 기록할 측정 전에 이 입력으로 Pout 만 빠르게 재서 (I/Q, 기록 안 함)
         허용 오차를 벗어나면 SG 를 고쳐 다시 - 맞으면 그 SG 로 기록 측정"""
@@ -313,6 +412,7 @@ class Engine:
                 po0 = po
             d = tgt - po
             if abs(d) <= tol:
+                self.gain_ok()
                 if k:
                     self.log("    Pout 딱 맞춤: %.2f dBm (목표 %.2f ±%.2f) · SG 기준 %.2f dBm" % (po, tgt, tol, p["sg_dbm"]))
                     if self.G is not None:             # DPD · ILC 의 목표 이득도 같이 → 다음 반복이 다시 벗어나지 않게
@@ -327,11 +427,32 @@ class Engine:
                 new = sg_max
             if abs(new - p["sg_dbm"]) < 0.001:
                 self.log("    ⚠ Pout 딱 맞추기: SG 최대에 걸림 (%.2f dBm)" % sg_max)
+                self.gain_note(tgt, po)
                 return
             self.log("    Pout %.2f dBm (목표와 %+.2f) → SG 기준 %.2f → %.2f dBm" % (po, -d, p["sg_dbm"], new))
             p["sg_dbm"] = new
 
     def measure(self, pd, label, it=0, nmse=None, step="", kind=None):
+        """측정 하나. FSW 응답 · 데이터 오류로 실패하면 [시작] 때 FSW 설정으로 되돌리고 한 번 다시 (실행마다 최대 5 번)"""
+        if getattr(self, "_guard_busy", False):
+            return self._measure1(pd, label, it, nmse, step, kind)
+        try:
+            return self._measure1(pd, label, it, nmse, step, kind)
+        except Stop:
+            raise
+        except Exception as e:
+            if self.stop or getattr(self, "_guard_n", 0) >= 5 or not getattr(self, "_guard", None):
+                raise
+            self.log("  ⚠ 측정 실패: %s: %s" % (type(e).__name__, e))
+            if not self.fsw_guard_restore(type(e).__name__):
+                raise
+            self._guard_busy = True
+            try:
+                return self._measure1(pd, label, it, nmse, step, kind)
+            finally:
+                self._guard_busy = False
+
+    def _measure1(self, pd, label, it=0, nmse=None, step="", kind=None):
         p, sig, x = self.p, self.sig, self.sig.x
         t_meas = time.time()
         if kind is None:                               # DPD 반복은 kind 없이 불림 → 여기서 정함 (예전: 그래서 GMP 는 Pout 유지 · 딱 맞춤이 안 걸렸음, ILC 만 됨)
@@ -672,6 +793,7 @@ class Engine:
                  vdd=vdd, id=idd, pdc=pdc, de=de, pae=pae, dc_src=src, method=self.tag,
                  pout_iq=pout_iq, pout_spec=pout_spec, pout_used=pout_used, de_iq=de_of(pout_iq), de_spec=de_of(pout_spec),
                  fsw_att=getattr(self, "_att_now", None), mod_att=mod_att_)
+        self._last_r = r
         # 목표 Pout 고정: DPD · ILC 는 '작은 신호 이득' 직선으로 맞추려 해서 반복할수록 Pout 이 올라감
         # → 목표와의 차이만큼 목표 이득 (G) 을 줄이거나 키워 다음 반복이 목표 Pout 으로 가게 (SG 는 그대로 고정)
         tgt_ = p.get("pout_lock")
@@ -698,6 +820,8 @@ class Engine:
                                                                      prev_r["pout"], r["pout"])
             if not getattr(self, "_bad_retry", False):
                 self.log("  ⚠ 이상 측정 (%s) → 이 데이터는 버리고 같은 입력으로 다시 잼" % msg)
+                if getattr(self, "_guard_n", 0) < 5:
+                    self.fsw_guard_restore("Gain 급감")       # 화면 (채널 · 레벨) 을 놓쳤을 수 있음 → 시작 때 설정으로
                 self._bad_retry = True
                 try:
                     return self.measure(pd, label, it, nmse, step, kind)
@@ -1008,6 +1132,8 @@ class Engine:
                 w, nm = self.model.fit(x, u, n_fit=self.p["n_fit"])
             self.model.w = w
             self.log("  모델 학습 (x → ILC 입력) %.1f초 · 오차 %.1f dB" % (time.time() - t0, nm))
+            w, nm = self._ilcm_widen(x, u, w, nm)
+            self._ilcm_fit = nm
             pd, n_clip = self.dpd_signal(w)
             y_al, last = self.measure(pd, "%sILC→모델" % label_pre, 1, nm, step)
             start = (pd, last)
@@ -1064,6 +1190,17 @@ class Engine:
             if n_clip:
                 self.log("  최고값 제한 (+%.1f dB) 에 걸린 샘플 %d 개" % (self.p["peak_lim_db"], n_clip))
             y_al, last = self.measure(pd, "%sDPD %d" % (label_pre, it), it, nmse, step)
+            kb = getattr(self, "_keep_best", None)
+            if kb is not None:
+                sc = C.aclr_worst(last)
+                if sc == sc and sc < kb[0]:
+                    self._keep_best = kb = (sc, w, pd, last, y_al)
+                elif sc == sc and sc > kb[0] + 1.0:
+                    # 다듬기가 오히려 나빠짐 → 멈추고 가장 좋았던 계수 · 신호로 (ILC 결과로 모델 만들기)
+                    self.log("  다듬기가 나빠짐 (%.1f > 최고 %.1f dBc) → 반복 멈추고 가장 좋았던 것으로" % (sc, kb[0]))
+                    _s, w, pd, last, y_al = kb
+                    self.model.w = w
+                    break
             if target is not None and C.aclr_worst(last) <= target:
                 self.log("  목표 ACLR %.1f dBc 이내 → 반복 끝" % target)
                 break
@@ -1098,6 +1235,7 @@ class Engine:
             err = tgt - po
             self.log("  %d) SG %.2f dBm → Pout %.2f dBm (목표와 %+.2f dB)" % (k + 1, sg, po, -err))
             if abs(err) <= tol:
+                self.gain_ok()
                 break
             slope = 1.0
             if len(hist) >= 2:
@@ -1108,6 +1246,7 @@ class Engine:
             if new > sg_max:
                 if sg >= sg_max - 1e-6:
                     self.log("  ⚠ SG 최대 (%.2f dBm) 에서도 목표 Pout 에 못 미침 → SG 최대로 진행 (2 카드 SG 최대 확인)" % sg_max)
+                    self.gain_note(tgt, po)
                     break
                 new = sg_max
             sg = new
@@ -1310,7 +1449,9 @@ class Engine:
             if r.get("clipped"):
                 self.log("  ⚠ SG 레벨이 SG 최대에 걸림 → ILC 가 입력을 더 못 키움 (2 카드 SG 최대 확인)")
         self._ilc_u = best[2]
-        self._resume = dict(kind="ilc", sg=self.p["sg_dbm"], u=best[2], y_al=best[3], gk=gk, best=best, k=k0 + n,
+        sg_b = best[1].get("base_sg") if isinstance(best[1], dict) else None
+        sg_b = float(sg_b) if sg_b is not None and sg_b == sg_b else self.p["sg_dbm"]      # ILC 가장 좋았던 순간의 SG
+        self._resume = dict(kind="ilc", sg=sg_b, sg_end=self.p["sg_dbm"], u=best[2], y_al=best[3], gk=gk, best=best, k=k0 + n,
                             label_pre=label_pre, step=step)
         r_fin = self._final_mod(best[2], label_pre, step, kind="ilc")
         self.last_pd, self.last_sg = best[2], self.p["sg_dbm"]       # 최종 신호 = ILC 가장 좋았던 입력
@@ -1406,6 +1547,28 @@ class Engine:
             self.p["sg_dbm"] = base
         return self.results
 
+    def ilc_save(self, path, meta):
+        """ILC 결과 (가장 좋았던 입력 u · SG · 원래 신호 x) 를 파일로 → 나중에 ILC 다시 안 돌리고 바로 모델 학습"""
+        import json
+        st = getattr(self, "_resume", None)
+        if not st or st.get("kind") != "ilc" or self.sig is None:
+            return None
+        np.savez_compressed(path, u=np.asarray(st["u"], dtype=np.complex64), x=np.asarray(self.sig.x, dtype=np.complex64),
+                            sg=float(st["sg"]), best=float(st["best"][0]), fs=float(self.sig.fs), meta=json.dumps(meta, ensure_ascii=False))
+        return path
+
+    @staticmethod
+    def ilc_load(path):
+        """저장한 ILC 결과 → _resume 모양 (x_ref = 저장 때 신호, 지금 신호와 같은지 확인용)"""
+        import json
+        d = np.load(path, allow_pickle=False)
+        meta = json.loads(str(d["meta"])) if "meta" in d.files else {}
+        u = d["u"].astype(complex)
+        best = float(d["best"])
+        sg = float(d["sg"])
+        return dict(kind="ilc", sg=sg, sg_end=sg, u=u, y_al=None, gk=None, best=(best, dict(meta.get("r") or {}), u, None),
+                    k=0, label_pre="", step="", x_ref=d["x"].astype(complex), fs_ref=float(d["fs"]), meta=meta, path=path)
+
     def run_ilc_model(self):
         """ILC 결과로 모델: 마지막 ILC 의 가장 좋았던 입력 u 를 정답으로 지금 모델 (GMP 등) 이 x → u 를 배움
         → 측정 → (반복 횟수 − 1) 번 ILA 등으로 다듬음. ILC 는 다시 안 돌림"""
@@ -1420,6 +1583,26 @@ class Engine:
         if self.sig is None:
             raise RuntimeError("신호가 없음")
         p = self.p
+        xr = st.get("x_ref")
+        if xr is not None:                                   # 저장한 ILC 를 불러온 경우: 지금 신호가 그때 신호와 같아야 함
+            x0 = self.sig.x
+            same = len(xr) == len(x0) and abs(float(st.get("fs_ref") or self.sig.fs) - self.sig.fs) < 1.0
+            if same:
+                d = 10 * np.log10(np.mean(np.abs(x0 - xr) ** 2) / np.mean(np.abs(x0) ** 2) + 1e-30)
+                same = d < -40
+            if not same:
+                raise RuntimeError("불러온 ILC 결과의 신호와 지금 신호가 다름 (샘플 %d vs %d · %.2f vs %.2f MSps) → "
+                                   "1 카드 신호 (파일 · 대역 · CFR · 샘플레이트) 를 ILC 때와 같게"
+                                   % (len(xr), len(x0), float(st.get("fs_ref") or 0) / 1e6, self.sig.fs / 1e6))
+            m_ = st.get("meta") or {}
+            self.log("  불러온 ILC: %s · %s · ILC 최고 %.1f dBc · SG %.2f dBm%s" % (
+                os.path.basename(st.get("path") or ""), m_.get("when", ""), st["best"][0], st["sg"],
+                (" · %s GHz" % m_.get("freq")) if m_.get("freq") is not None else ""))
+            try:
+                if m_.get("freq") is not None and abs(float(m_["freq"]) - float(p["freq_ghz"])) > 1e-6:
+                    self.log("  ⚠ 주파수가 다름: 저장 %.4f GHz · 지금 %.4f GHz → ILC 결과가 안 맞을 수 있음" % (float(m_["freq"]), float(p["freq_ghz"])))
+            except Exception:
+                pass
         base = p["sg_dbm"]
         p["sg_dbm"] = st["sg"]
         x, u = self.sig.x, st["u"]
@@ -1439,18 +1622,123 @@ class Engine:
             self.check()
             self.model.w = w
             self.log("  모델 학습 (x → ILC 입력) %.1f초 · 오차 %.1f dB" % (time.time() - t0, nm))
+            w, nm = self._ilcm_widen(x, u, w, nm)
             pd, n_clip = self.dpd_signal(w)
+            self.log("  최고값 제한 (+%.1f dB) 에 걸린 샘플 %d 개%s" % (p["peak_lim_db"], n_clip,
+                     "  ⚠ 많음 → 모델 출력 피크가 잘림 (4 카드 최고값 제한 ↑)" if n_clip > 0.0005 * len(pd) else ""))
+            self.ilcm_gap(x, u, pd)
+            if abs(st.get("sg_end", st["sg"]) - st["sg"]) > 0.005:
+                self.log("  SG: ILC 가장 좋았던 순간 %.2f dBm 로 (ILC 끝 %.2f dBm)" % (st["sg"], st["sg_end"]))
             y_al, last = self.measure(pd, "ILC→모델", 1, nm, stp)
             meth0 = p.get("method")
             if meth0 == "ilcm":
                 p["method"] = "ila"                        # 다듬기는 ILA (ILC 는 이미 했음)
+            self._keep_best = (C.aclr_worst(last), w, pd, last, y_al)
             try:
                 self._dpd_level(y_al, w, "ILC→모델 · ", stp, p.get("target_aclr"), start=(pd, last))
             finally:
                 p["method"] = meth0
+                self._keep_best = None
+            self.ilcm_verdict(st["best"][0], nm)
         finally:
             p["sg_dbm"] = base
         return self.results
+
+    def _ilcm_widen(self, x, u, w, nm):
+        """(나) ILC → 모델 학습 오차가 크면 K · M · L 을 넓혀 계산으로 다시 찾음 (측정 없음) → (w, nm)"""
+        p = self.p
+        nm0, kml0 = nm, (p["K"], p["M"], p["L"])
+        th = float(p.get("ilcm_fit_db", -40.0))
+        if p.get("ilcm_widen", True) and nm > th and p.get("model", "gmp") == "gmp" and not is_nn(p):
+            # (나) 학습 오차가 크면 = 지금 K · M · L 로는 ILC 입력을 다 못 흉내 냄 → 넓은 조합에서 계산으로 다시 (측정 없음)
+            self.log("  학습 오차 %.1f dB > %.0f dB → K · M · L 넓혀 다시 찾기 (계산만, 측정 없음)…" % (nm, th))
+            self.on_progress(self.eta_text() + " · ILC→모델 K·M·L 넓혀 찾는 중")
+            ratio = max(1, int(round(self.sig.fs / 491.52e6)))
+            Ms = tuple(sorted({max(1, int(round(m * ratio))) for m in (1, 2, 3, 4, 6, 8)}))
+            Ls = tuple(sorted({int(round(l * ratio)) for l in (0, 1, 2, 3)}))
+            t1 = time.time()
+            res = C.model_search(x, u, p["odd_only"], p["lam"], n_fit=min(int(p["n_fit"]), 30000),
+                                 Ks=(5, 7, 9, 11), Ms=Ms, Ls=Ls, cancelled=lambda: self.stop)
+            self.check()
+            pk = C.pick_models(res, 1)
+            if pk:
+                nmv, nc, K, M, L = pk[0]
+                self.log("  %d 조합 %.1f초 · 가장 좋은: K%d M%d L%d (검증 오차 %.1f dB, %d 계수)"
+                         % (len(res), time.time() - t1, K, M, L, nmv, nc))
+                if (K, M, L) != kml0:
+                    m2 = self.make_model(K, M, L)
+                    w2, nm2 = m2.fit(x, u, n_fit=p["n_fit"])
+                    self.check()
+                    if nm2 < nm - 0.5:
+                        self.model, w, nm = m2, w2, nm2
+                        self.model.w = w
+                        p["K"], p["M"], p["L"] = K, M, L
+                        self.tag = method_label(p) + (" ← ILC" if str(getattr(self, "tag", "")).endswith("← ILC") else "")
+                        self.log("  ✔ K%d M%d L%d 로 바꿈: 학습 오차 %.1f → %.1f dB" % (K, M, L, nm0, nm))
+                        cb = getattr(self, "on_kml", None)
+                        if cb:
+                            try:
+                                cb(K, M, L)
+                            except Exception:
+                                pass
+                    else:
+                        self.log("  넓혀도 학습 오차가 거의 안 줄어듦 (%.1f dB) → K%d M%d L%d 그대로" % (nm2, kml0[0], kml0[1], kml0[2]))
+        return w, nm
+
+    def ilcm_gap(self, x, u, pd):
+        """(측정 없이) 모델 출력 pd 가 ILC 입력 u 와 얼마나 다른지: 차이 신호의 인접 채널 전력 / 원래 신호 채널 전력
+        → 이 값이 ILC ACLR 보다 높으면 모델 ACLR 도 대략 그 근처에서 막힘"""
+        try:
+            fs = self.sig.fs
+            bwc, adj = self.p.get("ch_bw_mhz", 98.28) * 1e6, self.p.get("adj_mhz", 100.0) * 1e6
+            f, P = C.welch_psd(u, fs)
+            pc, _ = C.band_power(f, P, 0.0, bwc)
+            f, Pe = C.welch_psd(pd - u, fs)
+            pl, _ = C.band_power(f, Pe, -adj, bwc)
+            pu, _ = C.band_power(f, Pe, adj, bwc)
+            ec, _ = C.band_power(f, Pe, 0.0, bwc)
+            g = 10 * np.log10(max(pl, pu) / pc)
+            self.log("  모델 출력 vs ILC 입력 차이 (계산): 인접 채널 %.1f dBc · 채널 안 %.1f dB  → 모델 ACLR 이 대략 이 근처에서 막힘%s"
+                     % (g, 10 * np.log10(ec / pc), "  ⚠ 모델이 ILC 를 못 따라감 (K·M·L ↑ · 신경망)" if g > -45 else ""))
+            self._ilcm_gapdb = g
+            return g
+        except Exception as e:
+            self.log("  (모델 차이 계산 실패: %s)" % e)
+            return None
+
+    def ilcm_verdict(self, ilc_best, fit_db):
+        """(가) ILC 결과로 모델 만들기 끝 → 모델 최고 ACLR 을 ILC 최고와 비교 · 학습 오차로 어디가 한계인지 판정"""
+        vals = [C.aclr_worst(r) for r in self.results if r.get("kind") in ("dpd", "ilc") and r.get("aclr_l") is not None]
+        vals = [v for v in vals if v == v]
+        if not vals:
+            return None
+        mb = min(vals)
+        gap = mb - ilc_best
+        th = float(self.p.get("ilcm_fit_db", -40.0))
+        if gap <= 1.0:
+            why = ("모델이 ILC 만큼 나옴 → 모델은 한계 아님. 더 내리려면 ILC 자체가 막힌 곳 (측정 바닥 · PA) 을 봐야 함: "
+                   "FSW 감쇠 줄이기 · Ref 를 피크 바로 위로 · 노이즈 캔슬 · 스윕 시간 늘리기, "
+                   "PA 없이 SG → FSW 로 같은 Pout ACLR 을 재 비교 (비슷하면 장비 바닥)")
+            kind = "측정 · ILC 한계"
+        elif fit_db > th:
+            why = ("학습 오차가 큼 (%.1f dB) → 모델이 ILC 입력을 다 못 흉내 냄 = 모델 한계. "
+                   "K · M · L 키우기 · 4 카드 자동 [넓게] · 다른 모델 (신경망) 시도" % fit_db)
+            kind = "모델 한계"
+        else:
+            why = ("학습은 잘 됐는데 (%.1f dB) 측정에서 못 따라감 → 반복 사이 PA 상태 변화 (온도 · 메모리) · "
+                   "이득 차이일 수 있음. 반복 횟수 늘리기 · Pout 딱 맞춤 확인 · [이어서 더]" % fit_db)
+            kind = "모델 학습 OK · 측정에서 차이"
+        self.log("━━ 판정: ILC 최고 %.1f dBc · 모델 최고 %.1f dBc (ILC 보다 %+.1f dB) · 학습 오차 %.1f dB → %s"
+                 % (ilc_best, mb, gap, fit_db, kind))
+        self.log("   " + why)
+        v = dict(ilc=ilc_best, model=mb, gap=gap, fit=fit_db, kind=kind, why=why)
+        cb = getattr(self, "on_verdict", None)
+        if cb:
+            try:
+                cb(v)
+            except Exception:
+                pass
+        return v
 
     def run_more(self, n):
         """끝난 (또는 중지한) DPD · ILC 를 그 결과에서 이어서 n 번 더 (같은 SG 레벨 · 같은 계수 / 입력)"""

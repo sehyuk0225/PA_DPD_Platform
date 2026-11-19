@@ -1,4 +1,34 @@
-PA Bench Monitor Site2 v1.4.15  (PA Bench Monitor v2.5.100 기반 · PA Analyzer 연동판)
+PA Bench Monitor Site2 v1.4.24  (PA Bench Monitor v2.5.109 기반 · PA Analyzer 연동판)
+
+■ v1.4.24 변경점 - [설정 불러오기] 누르면 프로그램이 멈추던 문제 고침 (v2.5.104 부터)
+  - 원인: 파워서플라이 연결 · SCPI 탭의 주소 칸 상태 갱신 예약이 창 닫기 때 오류를 내 화면을 다시 열지 못함
+  - 창 닫기 때 예약 작업 취소 방식도 고쳐 같은 일이 다시 안 생기게
+
+■ v1.4.23 변경점 - DPD 탭: SG 최대인데 목표 Pout 이 안 나오면 Gain 로그 (DPD Tester v0.2.3.89 과 같음)
+
+■ v1.4.22 변경점 - DPD 탭: ILC 결과 저장 · 불러오기 (DPD Tester v0.2.3.88 과 같음)
+
+■ v1.4.21 변경점 - DPD 탭: ILC 결과로 모델 만들기 보강 (DPD Tester v0.2.3.87 과 같음)
+
+■ v1.4.20 변경점 - DPD 탭: FSW 화면 놓침 자동 복구 · ILC 결과로 모델 판정 · K·M·L 자동 넓힘 (DPD Tester v0.2.3.86 과 같음)
+
+■ v1.4.19 변경점 - Mod. 측정 '전류 못 읽음' 반복 고침 (v2.5.88 부터 생긴 문제)
+  - 원인: 외부 전원 (드라이버 앰프 · 외부 PK) 을 매초 읽느라 같은 GPIB 의 Vdd 전류 읽기가 밀림 → 평균 구간에 전류 값이 없음
+  - 자동 측정 · 천천히 내리기 중엔 외부 전원은 읽지 않음 (켜고 끄기만) · 설정값 읽기도 3 초에 한 번
+  - 전원 한 번 읽는 데 1.5 초 넘게 걸리면 로그에 '전원 읽기 느림' 표시 (진단)
+  - 파워서플라이 연결 · SCPI 탭에 E36155A · N6705C 주소 직접 입력 칸 + 연결 버튼
+
+■ v1.4.18 변경점 - 자동 측정 중 외부 전원 읽기 줄임 (Vdd 전류 읽기 우선)
+  - 자동 측정 · 천천히 내리기 중엔 외부 전원 (드라이버 앰프 · 외부 PK) 은 5 초에 한 번만 읽음 → 파워서플라이 한 바퀴가 빨라져 Vdd 전류가 자주 들어옴
+
+■ v1.4.17 변경점 - Pulse 측정도 "전류 못 읽음" 전에 RTO 새 파형을 기다림
+  - Pulse: 평균 구간에 RTO 새 파형 (트리거 걸린 것) 이 하나도 없으면 바로 다시 재지 않고 최대 3 초 기다림 (진행 줄 "RTO (새 파형) 전류 읽는 중…")
+  - 3 초 넘게 못 읽으면 상태 줄에 "RTO 트리거 · 채널 · 파형 확인" 알림 후 예전처럼 다시 재기 (Mod. 는 Vdd 를 같은 방식으로)
+
+■ v1.4.16 변경점 - Mod. 자동 측정 "전류 못 읽음" 다시 재기 줄임
+  - Mod. 측정은 Vdd 전류를 파워서플라이에서 읽는데, 평균 구간에 Vdd 전류가 하나도 없으면 바로 "전류 못 읽음" 으로
+    파워를 내렸다 다시 재던 것 → 이제 최대 3 초 동안 Vdd 를 직접 읽어 보며 기다린 뒤 기록 (진행 줄 "Vdd 전류 읽는 중…")
+  - 3 초 넘게 못 읽으면 상태 줄에 알림 (파워서플라이 연결 · 전원 읽기 확인) 후 예전처럼 다시 재기
 
 ■ v1.4.15 변경점 - 외부 전원 읽기가 Vdd 전류 읽기를 막던 것 · DPD K·M·L 넓게 · ILC 결과로 모델
   - 외부 전원 (드라이버 앰프 · 외부 PK) 읽기를 1 초에 한 번으로 · 연결 안 되는 주소는 60 초에 한 번만 다시 (측정 중엔 안 함)
@@ -126,5 +156,5 @@ PA Bench Monitor Site2 v1.4.15  (PA Bench Monitor v2.5.100 기반 · PA Analyzer
   - 설정 폴더는 PA Bench Monitor 와 같음 (%APPDATA%\PABenchMonitor)
 
 ■ 실행
-  - EXE 만들기: build_exe_site2.bat  → dist\PA-Bench-Monitor-Site2_v1.4.15\PA-Bench-Monitor-Site2_v1.4.15.exe
+  - EXE 만들기: build_exe_site2.bat  → dist\PA-Bench-Monitor-Site2_v1.4.24\PA-Bench-Monitor-Site2_v1.4.24.exe
   - 빌드 없이: run_without_build_site2.bat  (python pa_bench_monitor_site2.py)
