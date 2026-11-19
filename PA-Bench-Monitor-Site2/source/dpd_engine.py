@@ -184,6 +184,9 @@ class Engine:
         p = self.p
         K = p["K"] if K is None else K
         M = p["M"] if M is None else M
+        lag = lead = None                          # GMP Lagging · Leading 따로 (4 카드, 빈칸 = L 과 같음)
+        if L is None and not (p.get("auto_model") and p.get("model", "gmp") == "gmp"):
+            lag, lead = p.get("L_lag"), p.get("L_lead")      # K · M · L 자동일 땐 자동이 고른 L 하나로 앞뒤 같게 (예전 그대로)
         L = p["L"] if L is None else L
         mdl = p.get("model", "gmp")
         if mdl == "tnn":
@@ -203,9 +206,9 @@ class Engine:
         elif mdl == "dvr":
             m = C.DVRModel(int(p.get("dvr_seg", 8)), M, p["lam"])
         elif mdl == "sgmp":
-            m = C.SegGMPModel(K, M, L, p["odd_only"], p["lam"])
+            m = C.SegGMPModel(K, M, L, p["odd_only"], p["lam"], lag, lead)
         else:
-            m = C.DPDModel(K, M, L, p["odd_only"], p["lam"])
+            m = C.DPDModel(K, M, L, p["odd_only"], p["lam"], lag, lead)
         m.w = None
         return m
 
@@ -1187,7 +1190,7 @@ class Engine:
         self.lock_sg()
         x = self.sig.x
         p = self.p
-        keep = {k: p.get(k) for k in ("model", "method", "K", "M", "L")}
+        keep = {k: p.get(k) for k in ("model", "method", "K", "M", "L", "L_lag", "L_lead")}
         n_it = int(p["iters"])
         tot = 1
         for mdl, lrn in methods:
@@ -1240,7 +1243,8 @@ class Engine:
                                          n_coef=self.model.n_coef() if self.model is not None else 0,
                                          kml=("M%d H%d" % (p["M"], p.get("nn_hidden", 24)) if mdl in ("nn", "pnn", "tnn") else
                                               "구간 %d · M%d" % (p.get("dvr_seg", 8), p["M"]) if mdl == "dvr" else
-                                              "K%d M%d L%d" % (p["K"], p["M"], p["L"])), err=err))
+                                              "K%d M%d %s" % (p["K"], p["M"], self.model.lag_text() if hasattr(self.model, "lag_text")
+                                                               else "L%d" % p["L"])), err=err))
                 if best is not None:
                     sc_ = C.aclr_worst(best)
                     if getattr(self, "_cmp_best", None) is None or sc_ < self._cmp_best[0]:
