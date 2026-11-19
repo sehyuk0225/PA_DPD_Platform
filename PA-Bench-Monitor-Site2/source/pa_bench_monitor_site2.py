@@ -14,6 +14,35 @@ def _init2(self, *a, **k):
     site2.attach_vdd_ui(self)        # 파워서플라이 화면: Site2 Vdd 2 대 최대 (앞 · 뒤)
     site2.attach_da_order(self)      # 드라이버 앰프 전원: 바이어스 다 맞춘 뒤 ON · 끌 때 맨 먼저 OFF
     site2.attach_addr_ui(self)       # '파워서플라이 연결 · SCPI' 탭: 주소 칸 직접 입력 + 목록 더블클릭 → 칸 고르기
+    _jsh_topbar(self)                # JSH: 맨 위 막대 배경을 짙은 녹색으로 (원본 프로그램과 구분)
+
+
+# ---- JSH: 맨 위 막대 색 (원본 Bench 파일은 그대로 두고 여기서만 칠함) ----
+JSH_OLD_TB = "#1c2530"               # 원본 맨 위 막대 색 (거의 검정)
+JSH_TB = "#14532d"                   # 짙은 녹색
+
+
+def _jsh_paint(w):
+    """막대와 그 안에서 막대 색을 그대로 쓰는 칸만 녹색으로 (장비 칩 · 버튼 같은 자기 색은 그대로)"""
+    try:
+        if str(w.cget("bg")).lower() == JSH_OLD_TB:
+            w.configure(bg=JSH_TB)
+    except Exception:
+        pass
+    for c in w.winfo_children():
+        _jsh_paint(c)
+
+
+def _jsh_topbar(app):
+    try:
+        bar = app.cb_stype_top.master.master          # 샘플 칸 → 샘플 묶음 → 맨 위 막대
+    except Exception:
+        return
+    _jsh_paint(bar)
+    try:
+        app.root.after(1500, lambda: _jsh_paint(bar))  # 나중에 붙는 칸 (외부 전원 등) 도 한 번 더
+    except Exception:
+        pass
 
 
 bm.BenchApp.__init__ = _init2

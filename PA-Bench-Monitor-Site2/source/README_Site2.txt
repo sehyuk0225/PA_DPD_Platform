@@ -156,5 +156,5 @@ PA Bench Monitor Site2 v1.4.24  (PA Bench Monitor v2.5.109 기반 · PA Analyzer
   - 설정 폴더는 PA Bench Monitor 와 같음 (%APPDATA%\PABenchMonitor)
 
 ■ 실행
-  - EXE 만들기: build_exe_site2.bat  → dist\PA-Bench-Monitor-Site2_v1.4.24\PA-Bench-Monitor-Site2_v1.4.24.exe
+  - EXE 만들기: build_exe_site2.bat  → dist\PA-Bench-Monitor-Site2_v1.4.24_JSH\PA-Bench-Monitor-Site2_v1.4.24_JSH.exe
   - 빌드 없이: run_without_build_site2.bat  (python pa_bench_monitor_site2.py)

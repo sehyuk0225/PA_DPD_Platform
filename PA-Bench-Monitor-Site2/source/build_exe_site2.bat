@@ -17,7 +17,7 @@ if errorlevel 1 (
   pause
   exit /b 1
 )
-set NAME=PA-Bench-Monitor-Site2_v1.4.24
+set NAME=PA-Bench-Monitor-Site2_v1.4.24_JSH
 python -m PyInstaller --noconfirm --clean --onedir --windowed --name "%NAME%" --icon assets\bench.ico ^
   --paths pa_analyzer\src ^
   --hidden-import analyzer_child --hidden-import psu_panel --hidden-import site2 --hidden-import pa_bench_monitor --collect-submodules pyvisa --copy-metadata pyvisa ^
