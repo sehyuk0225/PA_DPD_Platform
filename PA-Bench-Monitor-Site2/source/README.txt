@@ -1,7 +1,11 @@
-﻿PA Bench Monitor v2.5.119  (PA Analyzer 연동판)
+﻿PA Bench Monitor v2.5.121  (PA Analyzer 연동판)
 =======================
 R&S SMW200A(신호발생기) · FSW(스펙트럼 분석기) · RTO2044(오실로스코프 전류)
 세 장비 값을 한 화면에 실시간으로 띄우고, SMW 파워가 바뀔 때마다 자동으로 표에 기록합니다.
+
+■ v2.5.121 변경점 - DPD 탭: 대역 제한 학습 제대로 (DPD Tester v0.2.3.101 과 같음)
+
+■ v2.5.120 변경점 - DPD 탭: ILC 결과로 모델 주파수별 오차 · 대역 제한 학습 (DPD Tester v0.2.3.100 과 같음)
 
 ■ v2.5.119 변경점 - DPD 탭: 4 카드 ILC 옵션 묶음 · K·M·L 조합별 오차 로그 (DPD Tester v0.2.3.99 과 같음)
 
