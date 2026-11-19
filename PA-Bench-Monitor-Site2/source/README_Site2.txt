@@ -1,4 +1,15 @@
-PA Bench Monitor Site2 v1.4.24.2_JSH  (PA Bench Monitor v2.5.109 기반 · PA Analyzer 연동판 · 원본 v1.4.24 + JSH 수정)
+PA Bench Monitor Site2 v1.4.24.3_JSH  (PA Bench Monitor v2.5.109 기반 · PA Analyzer 연동판 · 원본 v1.4.24 + JSH 수정)
+
+■ v1.4.24.3_JSH 변경점 - DPD 반복이 나빠질 때 되돌림 · DPD OFF 보다 나쁘면 처음부터 다시
+  - 되돌림 (4 카드 '되돌림 기준', 기본 1.0 dB, 0 = 끔): ILA · DLA · ILA+보정 · 신경망 반복 중
+    ACLR 이 가장 좋았던 값보다 기준 넘게 나빠지면 그 계수 · 측정으로 돌아가 섞기 비율 μ ½ 로 이어서.
+    반복이 끝나면 마지막이 아니라 가장 좋았던 계수로 끝냄
+  - OFF 보다 나쁘면 다시 (4 카드, 기본 2 번, 0 = 끔): 끝났는데 DPD OFF 보다 ACLR 이 나쁘면
+    계수 버림 → DPD OFF 다시 재서 목표 이득 다시 → μ ½ 로 처음부터. 2 번째부터는 목표 이득 크기 = 전체 평균 이득
+    (작은 신호 이득이 커서 피크가 포화 · 최고값 제한에 걸려 나빠지는 경우). 다 해도 나쁘면 가장 좋았던 시도로
+  - 가장 좋았던 계수로 끝났는데 SG 가 마지막에 해 본 (나쁜) 신호를 내보내는 중이면 → 가장 좋았던 신호를 한 번 더 보내 확인
+    ('최고 계수 (다시 보냄)' 줄)
+  - 두 칸 모두 0 이면 예전과 똑같이 동작
 
 ■ v1.4.24.2_JSH 변경점 - DPD 4 카드 학습 'ILA+보정' (ILA 뒤 측정하며 오차 보정)
   - 학습에 [ILA+보정] 추가: ILA 를 '반복 횟수' 만큼 → 그 계수에서 '오차 보정 반복' 만큼 더
@@ -173,5 +184,5 @@ PA Bench Monitor Site2 v1.4.24.2_JSH  (PA Bench Monitor v2.5.109 기반 · PA An
   - 설정 폴더는 PA Bench Monitor 와 같음 (%APPDATA%\PABenchMonitor)
 
 ■ 실행
-  - EXE 만들기: build_exe_site2.bat  → dist\PA-Bench-Monitor-Site2_v1.4.24.2_JSH\PA-Bench-Monitor-Site2_v1.4.24.2_JSH.exe
+  - EXE 만들기: build_exe_site2.bat  → dist\PA-Bench-Monitor-Site2_v1.4.24.3_JSH\PA-Bench-Monitor-Site2_v1.4.24.3_JSH.exe
   - 빌드 없이: run_without_build_site2.bat  (python pa_bench_monitor_site2.py)

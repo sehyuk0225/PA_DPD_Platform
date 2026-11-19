@@ -27,7 +27,7 @@ DEFAULTS = dict(
     os=4, n_sym=28, mod="256QAM", cfr_on=True, papr_db=8.0,
     sig_src="nr", wv_path="", ch_bw_mhz=98.28, adj_mhz=100.0,
     rec=None, auto_cal=False,
-    ec_iters=6, ec_mu=0.5,
+    ec_iters=6, ec_mu=0.5, ila_guard_db=1.0, retry_off=2,
     K=7, M=4, L=1, odd_only=False, lam=1e-6, iters=4, mu=0.7, peak_lim_db=3.0, n_fit=40000, target_aclr=None,
 )
 
@@ -482,6 +482,7 @@ class Engine:
         wv = C.write_wv(None, pd, sig.fs, comment="PA DPD Tester %s" % label)
         self.log("  %s: SG %.2f dBm 로 신호 보내는 중 (%.1f MB)…" % (label, lvl, len(wv) / 1e6))
         self.smw.load_wave(wv, p["freq_ghz"] * 1e9, lvl, rf_on=True)
+        self._sent_pd = pd                                 # JSH: 지금 SG 가 내보내는 신호 (끝에 가장 좋았던 것으로 돌아갔는지 확인용)
         self.check()
         w_set = float(p.get("settle_s", 0) or 0)          # SG 신호 · 레벨 바꾼 뒤 PA · 전류가 자리 잡을 때까지 (2 카드 '읽기 전 기다림')
         if w_set > 0:
@@ -798,6 +799,8 @@ class Engine:
                  pout_iq=pout_iq, pout_spec=pout_spec, pout_used=pout_used, de_iq=de_of(pout_iq), de_spec=de_of(pout_spec),
                  fsw_att=getattr(self, "_att_now", None), mod_att=mod_att_)
         self._last_r = r
+        if kind == "off":                           # JSH: 'DPD OFF 보다 나쁘면 다시' 기준 (같은 SG 일 때만 씀)
+            self._off_ref = (C.aclr_worst(r), y_al, p["sg_dbm"])
         # 목표 Pout 고정: DPD · ILC 는 '작은 신호 이득' 직선으로 맞추려 해서 반복할수록 Pout 이 올라감
         # → 목표와의 차이만큼 목표 이득 (G) 을 줄이거나 키워 다음 반복이 목표 Pout 으로 가게 (SG 는 그대로 고정)
         tgt_ = p.get("pout_lock")
@@ -1194,12 +1197,73 @@ class Engine:
         else:
             ilcm_here = False
         last, w, pd = self._dpd_level_core(y_al, w, label_pre, step, target, start)
+        if not ilcm_here:
+            last, w, pd = self._retry_if_worse(last, w, pd, label_pre, step, target)     # JSH
         if ilcm_here:
             self.log_model_params("ILC→모델 최종 (ILA 다듬은 뒤)", w)   # JSH
         r = self._final_mod(pd, label_pre, step)
+        if r is None and pd is not None and getattr(self, "_sent_pd", None) is not pd:
+            # JSH: 되돌림 · 다시 로 '가장 좋았던' 계수로 끝남 → SG 는 아직 마지막에 해 본 (나쁜) 신호 → 가장 좋았던 신호를 다시 보내 확인
+            self.check()
+            self.log("▶ %s가장 좋았던 계수 신호를 다시 보냄 (SG 에 남기고 확인)" % label_pre)
+            _yb, r = self.measure(pd, "%s최고 계수 (다시 보냄)" % label_pre, 99, None, step)
         self.last_pd, self.last_sg = pd, self.p["sg_dbm"]
         self._resume = dict(kind="dpd", sg=self.p["sg_dbm"], w=w, pd=pd, last=(r or last), y_al=getattr(self, "_y_last", y_al))
         return (r or last), w, pd
+
+    def _retry_if_worse(self, last, w, pd, label_pre, step, target=None):
+        """JSH: DPD 결과가 (같은 SG 의) DPD OFF 보다 나쁘면 처음부터 다시 - 계수 버림 · DPD OFF 다시 재서 목표 이득 다시 · μ ½.
+        2 번째 다시부터는 목표 이득 크기 = 전체 평균 이득 (작은 신호 이득이 너무 커서 피크가 포화에 걸리는 경우).
+        가장 좋았던 시도로 끝냄"""
+        p = self.p
+        n_try = int(p.get("retry_off", 2) or 0)
+        off = getattr(self, "_off_ref", None)
+        if n_try <= 0 or off is None or abs(off[2] - p["sg_dbm"]) > 1e-6 or last is None:
+            return last, w, pd
+        sc = C.aclr_worst(last)
+        if not (sc == sc and sc > off[0]):
+            return last, w, pd
+        x = self.sig.x
+        best = (sc, last, w, pd, self.G, getattr(self, "_y_last", None), self.model)
+        mu0 = p["mu"]
+        try:
+            for att in range(1, n_try + 1):
+                self.check()
+                p["mu"] = max(float(mu0) * 0.5 ** att, 0.1)
+                avg = att >= 2
+                self.log("⚠ %sDPD %.1f dBc 가 DPD OFF %.1f dBc 보다 나쁨 → 처음부터 다시 (%d / %d): 계수 버림 · DPD OFF 다시 재서 "
+                         "목표 이득 다시%s · μ %.2f" % (label_pre, best[0], off[0], att, n_try,
+                                                    " (크기 = 전체 평균 이득)" if avg else "", p["mu"]))
+                self.G = None
+                y_off, r_off = self.measure(x, "%sDPD OFF (다시 %d)" % (label_pre, att), 0, step=step)
+                off = self._off_ref
+                if avg:
+                    g_all = np.vdot(x, y_off) / np.vdot(x, x)
+                    self.log("  목표 이득: 작은 신호 %.2f dB → 전체 평균 %.2f dB (위상은 작은 신호 그대로)"
+                             % (20 * np.log10(abs(self.G)), 20 * np.log10(abs(g_all))))
+                    self.G = abs(g_all) * np.exp(1j * np.angle(self.G))
+                if is_nn(p):
+                    self.model = self.make_model()
+                last_n, w_n, pd_n = self._dpd_level_core(y_off, None, "%s다시%d · " % (label_pre, att), step, target)
+                sc_n = C.aclr_worst(last_n) if last_n is not None else float("nan")
+                if sc_n == sc_n and sc_n < best[0]:
+                    best = (sc_n, last_n, w_n, pd_n, self.G, getattr(self, "_y_last", None), self.model)
+                if sc_n == sc_n and sc_n <= off[0]:
+                    self.log("  ✔ 다시 %d: %.1f dBc (DPD OFF %.1f 보다 좋음) → 끝" % (att, sc_n, off[0]))
+                    break
+                self.log("  다시 %d: %.1f dBc (DPD OFF %.1f 보다 아직 나쁨)" % (att, sc_n, off[0]))
+            else:
+                self.log("  ⚠ %d 번 다시 해도 DPD OFF 보다 나쁨 → 가장 좋았던 %.1f dBc 로 · PA 여유 (SG ↓) · 최고값 제한 · 측정 바닥 확인"
+                         % (n_try, best[0]))
+        finally:
+            p["mu"] = mu0
+        _s, last, w, pd, G_b, y_b, m_b = best
+        self.G = G_b
+        self.model = m_b
+        self.model.w = w
+        if y_b is not None:
+            self._y_last = y_b
+        return last, w, pd
 
     def _dpd_level_core(self, y_al, w, label_pre, step, target=None, start=None):
         """한 SG 레벨에서 DPD 반복 (w = 시작 계수, 앞 레벨 것) → (마지막 결과, 계수)
@@ -1208,9 +1272,13 @@ class Engine:
         pd = x
         last = None
         n = int(self.p["iters"])
+        guard = float(self.p.get("ila_guard_db", 1.0) or 0.0)      # JSH: 되돌림 기준 (0 = 끔)
+        mu_eff = float(self.p["mu"])
+        best = None
         if start is not None:
             pd, last = start
             n = max(n - 1, 1)
+            best = (C.aclr_worst(last), w, pd, last, y_al)
             if target is not None and C.aclr_worst(last) <= target:
                 self.log("  목표 ACLR %.1f dBc 이내 → 반복 끝" % target)
                 return last, w, pd
@@ -1222,11 +1290,12 @@ class Engine:
                 pd, _ = self.dpd_signal(w)
                 self.model.w = w
                 y_al, last = self.measure(pd, "%sDPD 0 (이전 계수)" % label_pre, it, None, step)
+                best = (C.aclr_worst(last), w, pd, last, y_al)
                 if target is not None and C.aclr_worst(last) <= target:
                     self.log("  목표 ACLR %.1f dBc 이내 → 다음 레벨" % target)
                     return last, w, pd
             meth = self.p.get("method", "ila")
-            mu = float(self.p["mu"])
+            mu = mu_eff
             if is_nn(self.p):
                 # 신경망: 이전 가중치에서 이어서 학습 (ILA 방식, 섞지 않음)
                 self.on_progress("%s · 신경망 학습 중 · %d 번째" % (self.eta_text(), it))
@@ -1249,6 +1318,17 @@ class Engine:
                 self.log("  최고값 제한 (+%.1f dB) 에 걸린 샘플 %d 개" % (self.p["peak_lim_db"], n_clip))
             y_al, last = self.measure(pd, "%sDPD %d" % (label_pre, it), it, nmse, step)
             kb = getattr(self, "_keep_best", None)
+            if kb is None and guard > 0:
+                sc = C.aclr_worst(last)
+                if sc == sc and (best is None or sc < best[0]):
+                    best = (sc, w, pd, last, y_al)
+                elif sc == sc and sc > best[0] + guard:
+                    # JSH 되돌림: 가장 좋았던 것보다 기준 넘게 나빠짐 → 그 계수 · 측정으로 돌아가 μ ½ 로 이어서
+                    mu_eff = max(mu_eff * 0.5, 0.1)
+                    self.log("  ↩ 되돌림: %.1f dBc (최고 %.1f 보다 %.1f dB 나쁨 > %.1f) → 가장 좋았던 계수로 · μ %.2f"
+                             % (sc, best[0], sc - best[0], guard, mu_eff))
+                    _s, w, pd, last, y_al = best
+                    self.model.w = w
             if kb is not None:
                 sc = C.aclr_worst(last)
                 if sc == sc and sc < kb[0]:
@@ -1262,6 +1342,12 @@ class Engine:
             if target is not None and C.aclr_worst(last) <= target:
                 self.log("  목표 ACLR %.1f dBc 이내 → 반복 끝" % target)
                 break
+        if guard > 0 and getattr(self, "_keep_best", None) is None and best is not None and last is not None \
+                and C.aclr_worst(last) > best[0] + 1e-9:
+            self.log("  ↩ 반복 끝: 마지막 %.1f 보다 좋았던 %.1f dBc 계수로" % (C.aclr_worst(last), best[0]))
+            _s, w, pd, last, y_al = best
+            self.model.w = w
+            self._y_last = y_al
         if self.p.get("method") == "ilaec" and not is_nn(self.p) and w is not None and last is not None:
             last, w, pd = self._ec_refine(w, pd, last, y_al, label_pre, step, target)     # JSH: ILA 뒤 오차 보정 반복
         return last, w, pd

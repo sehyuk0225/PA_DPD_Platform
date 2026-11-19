@@ -659,6 +659,8 @@ TIPS = {
     "L": "GMP 교차 지연 L\n앞뒤 샘플 크기를 섞은 항 (0 ~ 2, 기본 1).\nDoherty · 넓은 대역이면 1 ~ 2. 0 = 메모리 다항식.",
     "L_lag": "GMP Lagging 항 수\n지난 샘플 크기를 섞은 항 x(n-m)·|x(n-m-l)|^k, l = 1 ~ 이 값 (0 ~ 3).\n빈칸 = 위 L 과 같음. 0 = Lagging 항 안 씀.\n'K · M · L 자동' 이 켜져 있으면 자동이 고른 L 로 앞뒤 같게 (이 칸은 안 씀).",
     "L_lead": "GMP Leading 항 수\n앞 샘플 크기를 섞은 항 x(n-m)·|x(n-m+l)|^k, l = 1 ~ 이 값 (0 ~ 3).\n빈칸 = 위 L 과 같음. 0 = Leading 항 안 씀.\n'K · M · L 자동' 이 켜져 있으면 자동이 고른 L 로 앞뒤 같게 (이 칸은 안 씀).",
+    "ila_guard_db": "되돌림 기준 (ILA · DLA · ILA+보정 · 신경망)\nDPD 반복 중 ACLR 이 지금까지 가장 좋았던 값보다 이만큼 (dB) 넘게 나빠지면\n가장 좋았던 계수로 돌아가 섞기 비율 μ 를 반으로 줄여 이어서 반복 (기본 1.0 dB, 0 = 끔).\n반복이 끝나면 마지막이 아니라 가장 좋았던 계수 · 신호로 끝냄.",
+    "retry_off": "DPD OFF 보다 나쁘면 다시 (ILA · DLA · ILA+보정 · 신경망)\n반복이 끝났는데도 DPD 결과가 DPD OFF 보다 ACLR 이 나쁘면 처음부터 다시 (기본 2 번, 0 = 끔).\n다시 할 때: 계수 버림 → DPD OFF 다시 재서 목표 이득 다시 → μ ½ 로 반복.\n2 번째부터는 목표 이득 크기를 '작은 신호 이득' 대신 '전체 평균 이득' 으로 (피크가 포화에 걸려 나빠지는 경우).\n다 해도 나쁘면 가장 좋았던 시도로 끝내고 로그에 확인할 것 (SG · 최고값 제한 · 측정 바닥).",
     "ec_iters": "오차 보정 반복 (학습 = ILA+보정 일 때)\nILA 반복이 끝난 뒤 '측정 → 출력 오차 → 계수 고침' 을 몇 번 더 (기본 6, 0 = 안 함).\n출력 오차를 PA 기울기 (AM-AM · AM-PM) 로 입력 쪽 보정량으로 바꿔 GMP 계수에 더함 → ILA 가 멈춘 곳에서 더 내려감.\n나빠지면 가장 좋았던 계수로 돌아가 μ 를 반으로.",
     "ec_mu": "오차 보정 μ (학습 = ILA+보정 일 때)\n한 번에 보정량을 얼마나 반영할지 (0.05 ~ 1, 기본 0.5).\n크면 빨리 내려가지만 흔들릴 수 있음 · 반복마다 ACLR 이 오르내리면 0.2 ~ 0.3.\n나빠지면 자동으로 반씩 줄어듦 (최소 0.05). 위 '섞기 비율 μ' 는 ILA 쪽 값 (따로).",
     "iters": "반복 횟수\n학습 → 측정을 몇 번 (3 ~ 5). 보통 2 ~ 3 번째에 거의 수렴.",
@@ -732,6 +734,8 @@ class App:
         ("dvr_seg", "DVR 구간 수", "8", "개 (6 ~ 12)", "dpd"),
         ("iters", "반복 횟수", "4", "번", "dpd"),
         ("mu", "섞기 비율 μ", "0.7", "1 = 새 계수만", "dpd"),
+        ("ila_guard_db", "되돌림 기준", "1.0", "dB 나빠지면 최고로 (0 = 끔)", "dpd"),
+        ("retry_off", "OFF 보다 나쁘면 다시", "2", "번 (0 = 끔)", "dpd"),
         ("ec_iters", "오차 보정 반복", "6", "번 (ILA 반복 뒤 · 0 = 안 함)", "dpd"),
         ("ec_mu", "오차 보정 μ", "0.5", "(0.05 ~ 1 · 나빠지면 자동 ½)", "dpd"),
         ("peak_lim_db", "최고값 제한", "3", "dB (원래 최고값 +)", "dpd"),
@@ -754,7 +758,7 @@ class App:
     MODEL_ROWS = {"K": ("gmp", "sgmp"), "L": ("gmp", "sgmp"), "L_lag": ("gmp", "sgmp"), "L_lead": ("gmp", "sgmp"), "ec_iters": ("gmp", "sgmp", "dvr"), "ec_mu": ("gmp", "sgmp", "dvr"), "dvr_seg": ("dvr",), "mu": ("gmp", "sgmp", "dvr"),
                   "lam": ("gmp", "sgmp", "dvr"), "nn_hidden": ("nn", "pnn", "tnn"), "nn_epochs": ("nn", "pnn", "tnn"),
                   "_odd": ("gmp", "sgmp"), "_auto": ("gmp",), "_learn": ("gmp", "sgmp", "dvr", "nn", "pnn", "tnn")}
-    METHOD_ROWS = {"ec_iters": ("ilaec",), "ec_mu": ("ilaec",)}        # JSH: 학습 방식마다 보이는 칸
+    METHOD_ROWS = {"ec_iters": ("ilaec",), "ec_mu": ("ilaec",), "retry_off": ("ila", "dla", "ilaec")}        # JSH: 학습 방식마다 보이는 칸
     CMP_DEF = ["gmp:ila", "gmp:dla", "sgmp:ila", "dvr:ila", "nn:ila", "pnn:ila"]
     OS_TXT = {"2": "245.76 MSps · 인접 채널 일부만", "3": "368.64 MSps", "4": "491.52 MSps (권장)"}
 
@@ -2786,8 +2790,9 @@ class App:
                                               else "torch 폴더 안 정함") + " · 못 읽으면 numpy 신경망으로 대신"
         self.lbl_model.configure(text=tip)
         meth_ = self.v["method"].get() if "method" in self.v else "ila"
-        for key, models in self.MODEL_ROWS.items():
-            show = m in models and (key not in self.METHOD_ROWS or meth_ in self.METHOD_ROWS[key])
+        for key in list(self.MODEL_ROWS) + [k_ for k_ in self.METHOD_ROWS if k_ not in self.MODEL_ROWS]:
+            models = self.MODEL_ROWS.get(key)
+            show = (models is None or m in models) and (key not in self.METHOD_ROWS or meth_ in self.METHOD_ROWS[key])
             for w in self.dpd_row_w.get(key, ()):
                 if show:
                     w.grid()
@@ -2968,7 +2973,7 @@ class App:
                 p[key] = max(fnum(val, 0.0), 0.0) if val else 0.0
             elif key in ("smw_host", "fsw_host", "mod", "fsw_att_db", "fsw_ref_dbm"):
                 p[key] = val
-            elif key in ("n_sym", "K", "M", "L", "ec_iters", "iters", "n_fit", "nn_hidden", "nn_epochs", "ilc_iters", "dvr_seg", "iq_avg"):
+            elif key in ("n_sym", "K", "M", "L", "ec_iters", "retry_off", "iters", "n_fit", "nn_hidden", "nn_epochs", "ilc_iters", "dvr_seg", "iq_avg"):
                 p[key] = int(fnum(val, float(dflt)))
             else:
                 p[key] = fnum(val, float(dflt))
