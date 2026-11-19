@@ -244,6 +244,9 @@ class Ext:
             idn = "? (%s)" % e
         self.log("외부 전원 연결: %s → %s" % (addr, idn), "ok")
         self.dev[addr.upper()] = d
+        if not hasattr(self, "idn"):
+            self.idn = {}
+        self.idn[addr.upper()] = idn
         return d
 
     def drop(self, addr):
@@ -283,6 +286,26 @@ class Ext:
             return float(t) if t else None
         except ValueError:
             raise RuntimeError("외부 PK 칸이 숫자가 아님: %s" % t)
+
+    def pk_v_safe(self):
+        try:
+            return self.pk_v()
+        except Exception:
+            return None
+
+    def pk_state(self):
+        """외부 PK 상태 한 줄 (이상 메시지에 붙임)"""
+        c = self.cfg()
+        if not (c.get("pk_addr") or "").strip():
+            return ""
+        v = self.pk_v_safe()
+        try:
+            o = self.pk_out()
+            on = o.is_on()
+            m = float(o.q("MEAS:VOLT?").split(",")[0])
+            return "외부 PK 게이트: %s · 읽음 %.3f V (설정 %s)" % ("ON" if on else "OFF", m, ("%.3f V" % v) if v is not None else "빈칸 = 안 씀")
+        except Exception as e:
+            return "외부 PK 게이트: 읽기 실패 (%s) · 설정 %s" % (e, ("%.3f V" % v) if v is not None else "빈칸")
 
     def pk_on_for_seq(self):
         """POWER SUPPLY ON 맨 앞: 이 샘플에 외부 PK 값이 있으면 그 값으로 걸고 ON → 읽어서 확인 (안 맞으면 순서 중지)"""
@@ -351,10 +374,36 @@ class Ext:
         except Exception as e:
             self.log("외부 PK 게이트 %s 실패: %s" % ("ON" if on else "OFF", e), "err")
 
+    def shared_outp(self):
+        """드라이버 앰프와 외부 PK 가 같은 E36xx 장비의 다른 출력 (P6V · P25V · N25V) 이면 True
+        → 그 장비는 OUTP ON/OFF 가 세 출력 공통이라 드라이버 앰프만 끄면 PK 게이트도 같이 꺼짐 (GaN: 게이트 0 V = 전류 흐름)"""
+        c = self.cfg()
+        if not c.get("da_use"):
+            return False
+        a, b = (c.get("da_addr") or "").strip().upper(), (c.get("pk_addr") or "").strip().upper()
+        if not a or not b:
+            return False
+        try:
+            if Out(None, c.get("da_out", "")).ch or Out(None, c.get("pk_out", "")).ch:
+                return False                               # N67xx 처럼 채널마다 OUTP 가 따로면 괜찮음
+        except Exception:
+            pass
+        if a == b:
+            return True
+        ids = getattr(self, "idn", {})
+        ia, ib = ids.get(a, ""), ids.get(b, "")
+        return bool(ia and ib and not ia.startswith("?") and ia == ib)
+
     def da_set(self, on, why=""):
         """드라이버 앰프 전원 ON / OFF 만 (전압 · 전류는 장비에 맞춰 둔 값)"""
         c = self.cfg()
         if not c.get("da_use"):
+            return
+        if self.shared_outp() and (self.pk_v_safe() is not None):
+            # 같은 장비 = OUTP 공통 → 드라이버 앰프를 끄면 PK 게이트도 꺼짐 → 위험해서 ON/OFF 안 함
+            self.log("✖ 드라이버 앰프 %s 안 함: 드라이버 앰프와 외부 PK 가 같은 장비 (%s) 라 출력 ON/OFF 가 같이 움직임 "
+                     "→ 드라이버 앰프만 끄면 PK 게이트도 꺼져 전류가 흐름. 드라이버 앰프는 다른 전원으로 (장비 설정 > 외부 전원)"
+                     % ("ON" if on else "OFF", c.get("da_addr", "")), "err")
             return
         try:
             o = self.da_out()                             # 전압 · 전류는 장비에 맞춰 둔 값 그대로 - ON / OFF 만
@@ -415,8 +464,37 @@ def attach(app):
         nm = getattr(fn, "__name__", "")
         if nm == "job_power_off":
             ext.da_set(False, "끄기 맨 먼저")
+        if nm == "job_power_on":
+            def fn2(pl, _fn=fn):
+                # 어떤 시작 방식이든 (게이트가 이미 켜져 있어 OUTP ON 을 안 보내는 경우 포함) Vdd 전에 외부 PK 게이트 확인
+                #   (예전: '게이트만 ON · 지금 값 그대로' 로 시작하면 외부 PK 가 꺼진 채 Vdd → 쇼트 확인에서 과전류)
+                if ext.pk_v_safe() is not None:
+                    try:
+                        ext.pk_on_for_seq()
+                    except Exception as e:
+                        P.post("log", "외부 PK 게이트 확인 실패 → Vdd 안 켬: %s" % e, "err")
+                        P.red("외부 PK 게이트 확인 실패 → Vdd 를 켜지 않고 멈춥니다\n\n%s" % e)
+                        raise PM.SeqStop("외부 PK 이상")
+                return _fn(pl)
+            fn2.__name__ = nm
+            orig_run(fn2, plan)
+            return
         orig_run(fn, plan)
     P.run_seq = run2
+
+    orig_fault = P.fault
+
+    def fault2(msg):
+        # 과전류 등 순서 이상: 외부 PK 상태를 같이 보여 줌 (PK 게이트가 꺼져 있었는지 바로 보이게)
+        try:
+            st = ext.pk_state()
+        except Exception:
+            st = ""
+        if st:
+            P.post("log", st, "err")
+            msg = msg + "\n\n" + st
+        orig_fault(msg)
+    P.fault = fault2
 
     orig_safe = P.safe_down
 
