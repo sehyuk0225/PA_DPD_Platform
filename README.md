@@ -15,3 +15,5 @@ PA Bench Monitor Site2 기반 PAM 자동 측정 · DPD 플랫폼.
 - 빌드 없이: `source/run_without_build_site2.bat`  (처음 한 번 `python -m pip install openpyxl PySide6 matplotlib numpy pyvisa`)
 - EXE 빌드: `source/build_exe_site2.bat`
 - EXE 이름 끝에 `_JSH` (`PA-Bench-Monitor-Site2_v1.4.24_JSH.exe`) · 위쪽 패널 바탕 (바탕 위 글씨 포함) 녹색 #00704A · 큰 숫자 칸은 원래 검정 (원본과 구분, `pa_bench_monitor_site2.py` 에서만 칠함)
+- ILC 결과 `.npz` 저장: 한계 ACLR (ILC) 뿐 아니라 ILC→모델 · 방식 비교 · 이어서 안의 ILC 도, 중지하면 그때까지 최고 결과를 `…_중지.npz` 로 (`%APPDATA%\PADPDTester\ilc`)
+- ILC→모델: 찾은 모델 파라미터 (모델 · K · M · L · Lagging · Leading · 계수 수 · 학습 오차 · 큰 계수 12 개) 를 로그에 (학습 직후 · ILA 다듬은 뒤)

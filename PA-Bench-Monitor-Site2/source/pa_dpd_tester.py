@@ -3072,6 +3072,7 @@ class App:
             self.engine = E.Engine(p, log=lambda s: self.q.put(("log", s)), on_result=lambda r: self.q.put(("res", r)),
                                    on_progress=lambda s: self.q.put(("prog", s)), dc_reader=self.read_dc)
             self.engine.on_lock = lambda sg: self.q.put(("sglock", sg))
+            self.engine.on_ilc = lambda e, partial: self.ilc_autosave(e, e.p, partial)    # JSH: ILC 결과마다 .npz 저장
             ks = getattr(self, "_keep_sig", None)
             self._keep_sig = None
             if ks is not None and all(ks[1].get(k) == p.get(k) for k in self.SIG_KEYS):
@@ -3141,6 +3142,7 @@ class App:
         except ValueError as e:
             messagebox.showwarning(APP, str(e))
             return
+        self.ilc_ctx()                                     # JSH: ILC 파일 이름용 샘플 종류 · 신호 파일 (화면 스레드에서 읽어 둠)
         self.log("손실: In %.2f · Out %.2f dB%s%s" % (
             p["in_loss_db"], p["out_loss_db"],
             (" (%s)" % self.lbl_loss.cget("text").split("(")[-1].rstrip(")")) if self.v["bench_loss"].get() else " (칸 값)",
@@ -3284,8 +3286,7 @@ class App:
                     eng.run_compare(compare[0], compare[1])
                     self.q.put(("cmp", (list(eng.compare), getattr(eng, "compare_off", None))))
                 elif ilc:
-                    eng.run_ilc(levels if sweep else None)
-                    self.ilc_autosave(eng, p)
+                    eng.run_ilc(levels if sweep else None)        # .npz 저장은 ILC 가 끝날 때 엔진이 알려 줌 (on_ilc)
                 elif sweep:
                     eng.run_sweep(levels, pstop if pstop == pstop else None)
                 else:
@@ -5105,24 +5106,36 @@ class App:
         pd, sg, ghz, y = st
         return eng, r, E.np.asarray(pd, dtype=complex), sg, ghz, E.np.asarray(y, dtype=complex)
 
-    def ilc_autosave(self, eng, p):
-        """ILC 가 끝나면 결과를 파일로 (작업 스레드에서) → 📂 저장한 ILC 로 나중에 바로 모델 학습"""
+    def ilc_ctx(self):
+        """JSH: 파일 이름 · 정보에 쓸 샘플 종류 · 신호 파일 (화면 칸은 화면 스레드에서만 읽음 → 실행 시작 때 담아 둠)"""
+        try:
+            stype = (self.v["b_stype"].get().strip() if "b_stype" in self.v else "") or "샘플"
+            sig = self.v["wv_path"].get() if "wv_path" in self.v else ""
+            self._ilc_ctx_v = (stype, sig)
+        except Exception:
+            pass
+        return getattr(self, "_ilc_ctx_v", ("샘플", ""))
+
+    def ilc_autosave(self, eng, p, partial=False):
+        """ILC 가 끝나면 (또는 중지하면 그때까지 최고) 결과를 파일로 (작업 스레드에서) → 📂 저장한 ILC 로 나중에 바로 모델 학습"""
         try:
             st = getattr(eng, "_resume", None)
             if not st or st.get("kind") != "ilc":
                 return
             os.makedirs(ILC_DIR, exist_ok=True)
             r = st["best"][1] if isinstance(st["best"][1], dict) else {}
-            stype = (self.v["b_stype"].get().strip() if "b_stype" in self.v else "") or "샘플"
+            stype, sig_path = getattr(self, "_ilc_ctx_v", None) or ("샘플", "")
             stype = re.sub(r'[\\/:*?"<>|]', "_", stype)[:40]
-            name = "ILC_%s_%.3fGHz_%.1fdBc_Pout%.2f_%s.npz" % (stype, p["freq_ghz"], st["best"][0], r.get("pout", float("nan")),
-                                                                 time.strftime("%Y%m%d_%H%M%S"))
-            meta = dict(when=time.strftime("%Y-%m-%d %H:%M"), stype=stype, freq=p["freq_ghz"], sg=st["sg"], best=st["best"][0],
-                        pout=r.get("pout"), r={k: r.get(k) for k in ("aclr_l", "aclr_u", "pout", "label") if k in r},
-                        sig=self.v["wv_path"].get() if "wv_path" in self.v else "", ver=VERSION)
+            name = "ILC_%s_%.3fGHz_%.1fdBc_Pout%.2f_%s%s.npz" % (stype, p["freq_ghz"], st["best"][0], float(r.get("pout", float("nan"))),
+                                                                   time.strftime("%Y%m%d_%H%M%S"), "_중지" if partial else "")
+            meta = dict(when=time.strftime("%Y-%m-%d %H:%M"), stype=stype, freq=float(p["freq_ghz"]), sg=float(st["sg"]),
+                        best=float(st["best"][0]), pout=(float(r["pout"]) if isinstance(r.get("pout"), (int, float)) else None),
+                        r={k: (float(r[k]) if isinstance(r[k], (int, float)) else r[k]) for k in ("aclr_l", "aclr_u", "pout", "label") if k in r},
+                        sig=sig_path, ver=VERSION, partial=bool(partial), iters=int(st.get("k") or 0))
             path = eng.ilc_save(os.path.join(ILC_DIR, name), meta)
             if path:
-                self.q.put(("log", "  💾 ILC 결과 저장: %s (📂 저장한 ILC 로 나중에 바로 모델 학습)" % name))
+                self.q.put(("log", "  💾 ILC 결과 저장%s: %s\n     폴더: %s (📂 저장한 ILC 로 나중에 바로 모델 학습)"
+                            % (" (중지 · 그때까지 최고)" if partial else "", name, ILC_DIR)))
             fs = sorted((f for f in os.listdir(ILC_DIR) if f.lower().endswith(".npz")),
                         key=lambda f: os.path.getmtime(os.path.join(ILC_DIR, f)))
             for f in fs[:-60]:
