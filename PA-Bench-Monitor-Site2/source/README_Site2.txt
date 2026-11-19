@@ -1,4 +1,12 @@
-PA Bench Monitor Site2 v1.4.24  (PA Bench Monitor v2.5.109 기반 · PA Analyzer 연동판)
+PA Bench Monitor Site2 v1.4.24.1_JSH  (PA Bench Monitor v2.5.109 기반 · PA Analyzer 연동판 · 원본 v1.4.24 + JSH 수정)
+
+■ v1.4.24.1_JSH 변경점 (원본 Site2 v1.4.24 기준)
+  - DPD 4 카드: GMP 'Lagging 항 (l+)' · 'Leading 항 (l−)' 수를 따로 설정 (빈칸 = L 과 같음 → 원본과 똑같이 동작)
+    · 'K · M · L 자동' · 'ILC→모델 K·M·L 넓힘' 이 고른 모델은 L 하나로 앞뒤 같게
+  - ILC 결과 .npz 저장 고침: 한계 ACLR (ILC) 뿐 아니라 ILC→모델 · 방식 비교 · 이어서 안의 ILC 도 저장
+    · 중지하면 그때까지 가장 좋았던 결과를 …_중지.npz 로 저장 → 🧠 ILC 결과로 모델 만들기 바로 가능
+  - ILC→모델: 찾은 모델 파라미터 (K · M · L · Lagging · Leading · 계수 수 · 학습 오차 · 큰 계수) 를 로그에
+  - 원본과 구분: EXE 이름 끝 _JSH · 위쪽 패널 바탕 녹색 (#00704A)
 
 ■ v1.4.24 변경점 - [설정 불러오기] 누르면 프로그램이 멈추던 문제 고침 (v2.5.104 부터)
   - 원인: 파워서플라이 연결 · SCPI 탭의 주소 칸 상태 갱신 예약이 창 닫기 때 오류를 내 화면을 다시 열지 못함
@@ -156,5 +164,5 @@ PA Bench Monitor Site2 v1.4.24  (PA Bench Monitor v2.5.109 기반 · PA Analyzer
   - 설정 폴더는 PA Bench Monitor 와 같음 (%APPDATA%\PABenchMonitor)
 
 ■ 실행
-  - EXE 만들기: build_exe_site2.bat  → dist\PA-Bench-Monitor-Site2_v1.4.24_JSH\PA-Bench-Monitor-Site2_v1.4.24_JSH.exe
+  - EXE 만들기: build_exe_site2.bat  → dist\PA-Bench-Monitor-Site2_v1.4.24.1_JSH\PA-Bench-Monitor-Site2_v1.4.24.1_JSH.exe
   - 빌드 없이: run_without_build_site2.bat  (python pa_bench_monitor_site2.py)
