@@ -1,4 +1,13 @@
-PA Bench Monitor Site2 v1.4.24.1_JSH  (PA Bench Monitor v2.5.109 기반 · PA Analyzer 연동판 · 원본 v1.4.24 + JSH 수정)
+PA Bench Monitor Site2 v1.4.24.2_JSH  (PA Bench Monitor v2.5.109 기반 · PA Analyzer 연동판 · 원본 v1.4.24 + JSH 수정)
+
+■ v1.4.24.2_JSH 변경점 - DPD 4 카드 학습 'ILA+보정' (ILA 뒤 측정하며 오차 보정)
+  - 학습에 [ILA+보정] 추가: ILA 를 '반복 횟수' 만큼 → 그 계수에서 '오차 보정 반복' 만큼 더
+    측정 → 출력 오차 (원래 신호 − 출력/G) → PA 기울기 (측정한 AM-AM · AM-PM) 로 입력 쪽 보정량 → GMP 계수에 '오차 보정 μ' 만큼 더함
+    · 포화 근처처럼 PA 기울기가 작은 곳도 모자라지 않게 고침 (DLA 는 기울기 1 로 봄)
+    · 나빠지면 가장 좋았던 계수로 돌아가 μ 를 반으로 (최소 0.05) · 끝나면 가장 좋았던 계수 · 신호로
+  - 4 카드 칸: '오차 보정 반복' (기본 6, 0 = 안 함) · '오차 보정 μ' (기본 0.5) - 학습 = ILA+보정 일 때만 보임 (GMP · 구간 GMP · DVR)
+  - 방식 비교에도 'GMP-ILA+보정' · 남은 시간에 오차 보정 측정 포함 · 엑셀 DPD 줄에 오차 보정 설정
+  - 학습 버튼 이름 짧게: ILA · DLA · ILC→모델 · ILA+보정 (카드 폭 안에 들어가게)
 
 ■ v1.4.24.1_JSH 변경점 (원본 Site2 v1.4.24 기준)
   - DPD 4 카드: GMP 'Lagging 항 (l+)' · 'Leading 항 (l−)' 수를 따로 설정 (빈칸 = L 과 같음 → 원본과 똑같이 동작)
@@ -164,5 +173,5 @@ PA Bench Monitor Site2 v1.4.24.1_JSH  (PA Bench Monitor v2.5.109 기반 · PA An
   - 설정 폴더는 PA Bench Monitor 와 같음 (%APPDATA%\PABenchMonitor)
 
 ■ 실행
-  - EXE 만들기: build_exe_site2.bat  → dist\PA-Bench-Monitor-Site2_v1.4.24.1_JSH\PA-Bench-Monitor-Site2_v1.4.24.1_JSH.exe
+  - EXE 만들기: build_exe_site2.bat  → dist\PA-Bench-Monitor-Site2_v1.4.24.2_JSH\PA-Bench-Monitor-Site2_v1.4.24.2_JSH.exe
   - 빌드 없이: run_without_build_site2.bat  (python pa_bench_monitor_site2.py)

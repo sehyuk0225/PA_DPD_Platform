@@ -27,6 +27,7 @@ DEFAULTS = dict(
     os=4, n_sym=28, mod="256QAM", cfr_on=True, papr_db=8.0,
     sig_src="nr", wv_path="", ch_bw_mhz=98.28, adj_mhz=100.0,
     rec=None, auto_cal=False,
+    ec_iters=6, ec_mu=0.5,
     K=7, M=4, L=1, odd_only=False, lam=1e-6, iters=4, mu=0.7, peak_lim_db=3.0, n_fit=40000, target_aclr=None,
 )
 
@@ -39,7 +40,7 @@ def migrate_method(p):
     if p.get("method") == "nn":
         p["model"], p["method"] = "nn", "ila"
     p.setdefault("model", "gmp")
-    if p.get("method") not in ("ila", "dla", "ilcm"):
+    if p.get("method") not in ("ila", "dla", "ilcm", "ilaec"):
         p["method"] = "ila"
     return p
 
@@ -54,7 +55,7 @@ def method_label(p):
         return "%s-ILC→모델" % MODEL_NAMES.get(m, m)
     if is_nn(p):
         return MODEL_NAMES[m]
-    return "%s-%s" % (MODEL_NAMES.get(m, m), "DLA" if p.get("method") == "dla" else "ILA")
+    return "%s-%s" % (MODEL_NAMES.get(m, m), {"dla": "DLA", "ilaec": "ILA+보정"}.get(p.get("method"), "ILA"))
 
 
 class Engine:
@@ -945,6 +946,10 @@ class Engine:
         e["t_last"] = now
         e["done"] += 1
 
+    def ec_n(self):
+        """JSH: 'ILA+보정' 오차 보정 측정 수 (남은 시간 계산용)"""
+        return int(self.p.get("ec_iters", 0) or 0) if (self.p.get("method") == "ilaec" and not is_nn(self.p)) else 0
+
     def auto_n(self):
         """K · M · L 자동 실측 후보 수: 기본 3 · 넓게 5"""
         return 5 if self.p.get("auto_wide") else 3
@@ -1257,7 +1262,95 @@ class Engine:
             if target is not None and C.aclr_worst(last) <= target:
                 self.log("  목표 ACLR %.1f dBc 이내 → 반복 끝" % target)
                 break
+        if self.p.get("method") == "ilaec" and not is_nn(self.p) and w is not None and last is not None:
+            last, w, pd = self._ec_refine(w, pd, last, y_al, label_pre, step, target)     # JSH: ILA 뒤 오차 보정 반복
         return last, w, pd
+
+    # ------------------------------------------------------------ JSH: ILA + 오차 보정 (측정 반복하며 출력 오차를 직접 줄임)
+    @staticmethod
+    def _pa_curve(pd, y, nb=48):
+        """측정한 (입력 pd, 출력 y = y_al/G) 로 PA AM-AM F(r) · AM-PM φ(r) 곡선 (다항식) → (F, F', φ') 함수"""
+        r = np.abs(pd)
+        ok = r > 1e-9
+        r, yy, pp = r[ok], y[ok], pd[ok]
+        rmax = np.percentile(r, 99.9)
+        edges = np.linspace(0, rmax, nb + 1)
+        idx = np.clip(np.digitize(r, edges) - 1, 0, nb - 1)
+        rc, Fc, Pc, wc = [], [], [], []
+        ph = np.angle(yy * np.conj(pp))
+        for b in range(nb):
+            sel = idx == b
+            if np.count_nonzero(sel) < 20:
+                continue
+            rc.append(np.mean(r[sel]))
+            Fc.append(np.mean(np.abs(yy[sel])))
+            Pc.append(np.angle(np.mean(np.exp(1j * ph[sel]))))
+            wc.append(np.sqrt(np.count_nonzero(sel)))
+        rc, Fc, Pc, wc = map(np.asarray, (rc, Fc, Pc, wc))
+        # F(r) = r · (a0 + a1 r + … ) (원점 지남) · φ(r) = b0 + b1 r + …
+        A = np.stack([rc ** (k + 1) for k in range(6)], axis=1)
+        a = np.linalg.lstsq(A * wc[:, None], Fc * wc, rcond=None)[0]
+        B = np.stack([rc ** k for k in range(5)], axis=1)
+        bph = np.linalg.lstsq(B * wc[:, None], np.unwrap(Pc) * wc, rcond=None)[0]
+        F = lambda x: sum(a[k] * x ** (k + 1) for k in range(6))
+        dF = lambda x: sum((k + 1) * a[k] * x ** k for k in range(6))
+        dphi = lambda x: sum(k * bph[k] * x ** (k - 1) for k in range(1, 5))
+        return F, dF, dphi, rmax
+
+    def _ec_step(self, x, pd, y):
+        """출력 오차 e = x − y 를 PA 기울기로 입력 쪽 보정량 δpd 로 (지름 · 접선 방향 따로, AM-PM 섞임 반영)"""
+        e = x - y
+        F, dF, dphi, rmax = self._pa_curve(pd, y)
+        r = np.minimum(np.abs(pd), rmax)
+        g0 = max(float(dF(1e-3 * rmax)), 1e-6)                    # 작은 신호 기울기
+        Fp = np.maximum(dF(r), 0.25 * g0)                          # 포화 근처에서 기울기가 0 으로 가면 너무 크게 고치지 않게
+        Fr = np.maximum(F(r), 1e-9)
+        Fr_r = np.where(r > 1e-3 * rmax, Fr / np.maximum(r, 1e-12), g0)
+        uo = np.exp(1j * np.angle(y))                              # 출력 방향
+        ui = np.exp(1j * np.angle(pd))                             # 입력 방향
+        eo = e * np.conj(uo)
+        d_r = eo.real / Fp
+        d_t = (eo.imag - Fr * dphi(r) * d_r) / Fr_r
+        return (d_r + 1j * d_t) * ui, e
+
+    def _ec_refine(self, w, pd, last, y_al, label_pre, step, target=None):
+        """ILA 로 맞춘 계수에서 시작해 '측정 → 출력 오차 → PA 기울기로 입력 보정량 → 모델 계수에 μ 만큼 더함' 반복.
+        나빠지면 가장 좋았던 계수로 돌아가 μ 를 반으로. 반환 (가장 좋은 결과, 계수, 신호)"""
+        p, x = self.p, self.sig.x
+        n = int(p.get("ec_iters", 6) or 0)
+        mu = float(p.get("ec_mu", 0.5) or 0.5)
+        if n <= 0:
+            return last, w, pd
+        sc0 = C.aclr_worst(last)
+        best = (sc0, w, pd, last, y_al)
+        self.log("▶ %s오차 보정 %d 번 (μ %.2f) - ILA 결과 (%.1f dBc) 에서 측정 출력 오차를 PA 기울기로 직접 줄임"
+                 % (label_pre, n, mu, sc0))
+        for it in range(1, n + 1):
+            self.check()
+            yb = best[4] / self.G
+            dpd_in, e = self._ec_step(x, best[2], yb)
+            dw, _ = self.model.fit(x, self.focus_weight(dpd_in), n_fit=p["n_fit"])
+            nmse = 10 * np.log10(np.mean(np.abs(e) ** 2) / np.mean(np.abs(x) ** 2))
+            w_new = best[1] + mu * dw
+            self.model.w = w_new
+            pd_new, n_clip = self.dpd_signal(w_new)
+            if n_clip:
+                self.log("  최고값 제한 (+%.1f dB) 에 걸린 샘플 %d 개" % (p["peak_lim_db"], n_clip))
+            y_new, r = self.measure(pd_new, "%s오차 보정 %d" % (label_pre, it), it, nmse, step)
+            sc = C.aclr_worst(r)
+            if sc == sc and sc < best[0]:
+                self.log("  오차 보정 %d: %.1f dBc (좋아짐 %+.1f dB · 출력 오차 %.1f dB · μ %.2f)" % (it, sc, sc - best[0], nmse, mu))
+                best = (sc, w_new, pd_new, r, y_new)
+            else:
+                mu = max(mu * 0.5, 0.05)
+                self.log("  오차 보정 %d: %.1f dBc (최고 %.1f 보다 안 좋음) → 최고 계수로 돌아가 μ %.2f" % (it, sc, best[0], mu))
+            if target is not None and best[0] <= target:
+                self.log("  목표 ACLR %.1f dBc 이내 → 오차 보정 끝" % target)
+                break
+        self.model.w = best[1]
+        self.log("  ✔ 오차 보정 끝: %.1f → %.1f dBc (%+.1f dB)" % (sc0, best[0], best[0] - sc0))
+        self._y_last = best[4]
+        return best[3], best[1], best[2]
 
     def lock_sg(self):
         """목표 Pout (p['pout_lock']) 이 있으면: DPD OFF 신호를 보내며 실제 Pout 을 재서 SG 를 맞춤 → 그 SG 로 고정
@@ -1339,7 +1432,7 @@ class Engine:
         self.G = None
         auto = self.p.get("auto_model") and self.p.get("model", "gmp") == "gmp"
         n_it = int(self.p["iters"])
-        self.eta_reset(1 if not do_dpd else 1 + (self.auto_n() + max(n_it - 1, 1) if auto else n_it))
+        self.eta_reset(1 if not do_dpd else 1 + (self.auto_n() + max(n_it - 1, 1) if auto else n_it) + self.ec_n())
         self.eta_level(self.eta["total"])
         self.log("▶ DPD OFF 측정")
         y_al, r0 = self.measure(x, "DPD OFF", 0, step="SG %.2f dBm" % self.p["sg_dbm"])
@@ -1605,7 +1698,7 @@ class Engine:
         auto = self.p.get("auto_model") and self.p.get("model", "gmp") == "gmp"
         n_it = int(self.p["iters"])
         nl = len([l for l in levels if l <= self.p["sg_max_dbm"] + 1e-9])
-        plan = lambda first: 1 + ((self.auto_n() + max(n_it - 1, 1)) if (first and auto) else (n_it + (0 if first else 1)))
+        plan = lambda first: 1 + ((self.auto_n() + max(n_it - 1, 1)) if (first and auto) else (n_it + (0 if first else 1))) + self.ec_n()
         self.eta_reset(sum(plan(i == 0) for i in range(nl)))
         try:
             for i, lv in enumerate(levels):
