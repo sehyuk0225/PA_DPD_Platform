@@ -1,4 +1,12 @@
-PA Bench Monitor Site2 v1.4.36_JSH  (PA Bench Monitor v2.5.121 기반 · PA Analyzer 연동판 · 원본 v1.4.36 + JSH 수정)
+PA Bench Monitor Site2 v1.4.36.1_JSH  (PA Bench Monitor v2.5.121 기반 · PA Analyzer 연동판 · 원본 v1.4.36 + JSH 수정)
+
+■ v1.4.36.1_JSH - ILC→모델: DVR 구간 수 · M 자동 찾기
+  - 모델 = DVR 이고 학습 = ILC→모델 (또는 🧠 ILC 결과로 모델 만들기) 일 때, ILC 입력을 정답으로
+    구간 수 6·8·10·12·16 × M 2·3·4·6·8 (+ 지금 4 카드 값) 을 측정 없이 계산으로 비교
+    → '인접 채널 차이 (모델 출력 − ILC 입력)' 가 가장 작은 조합으로 (0.3 dB 안이면 계수 적은 쪽)
+  - 지금 4 카드 값보다 0.3 dB 넘게 좋을 때만 바꿈 · 조합별 결과 로그 (★ 고른 것 · ◆ 지금 값) · 범위 끝이면 알려 줌
+  - 5 카드 'ILC 결과로 모델' 묶음에 [DVR 구간 수 · M 자동 찾기] (기본 켬) · 4 카드 칸 값은 안 바꿈
+  - GMP 등 다른 모델은 영향 없음
 
 ■ v1.4.36_JSH - 원본 v1.4.36 에 JSH 수정 (v1.4.24.1 ~ v1.4.34.1_JSH) 을 모두 옮김
   - 원본 v1.4.35 ~ 36 대역 제한 학습 (ILC→모델) 도 4 카드 Lagging · Leading 을 그대로 씀
@@ -221,5 +229,5 @@ PA Bench Monitor Site2 v1.4.36_JSH  (PA Bench Monitor v2.5.121 기반 · PA Anal
   - 설정 폴더는 PA Bench Monitor 와 같음 (%APPDATA%\PABenchMonitor)
 
 ■ 실행
-  - EXE 만들기: build_exe_site2.bat  → dist\PA-Bench-Monitor-Site2_v1.4.36_JSH\PA-Bench-Monitor-Site2_v1.4.36_JSH.exe
+  - EXE 만들기: build_exe_site2.bat  → dist\PA-Bench-Monitor-Site2_v1.4.36.1_JSH\PA-Bench-Monitor-Site2_v1.4.36.1_JSH.exe
   - 빌드 없이: run_without_build_site2.bat  (python pa_bench_monitor_site2.py)

@@ -1204,6 +1204,7 @@ class Engine:
             self.log("  모델 학습 (x → ILC 입력) %.1f초 · 오차 %.1f dB" % (time.time() - t0, nm))
             u, w, nm = self._ilcm_band(x, u, w, nm)
             w, nm = self._ilcm_widen(x, u, w, nm)
+            w, nm = self._ilcm_dvr(x, u, w, nm)                 # JSH: DVR 구간 수 · M 자동 찾기
             w, nm = self._ilcm_lin(x, u, w, nm)
             w, nm = self._ilcm_trap(x, u, w, nm)
             w, nm = self._ilcm_stab(x, u, w, nm)
@@ -1936,6 +1937,7 @@ class Engine:
             self.log("  모델 학습 (x → ILC 입력) %.1f초 · 오차 %.1f dB" % (time.time() - t0, nm))
             u, w, nm = self._ilcm_band(x, u, w, nm)
             w, nm = self._ilcm_widen(x, u, w, nm)
+            w, nm = self._ilcm_dvr(x, u, w, nm)                 # JSH: DVR 구간 수 · M 자동 찾기
             w, nm = self._ilcm_lin(x, u, w, nm)
             w, nm = self._ilcm_trap(x, u, w, nm)
             w, nm = self._ilcm_stab(x, u, w, nm)
@@ -2263,6 +2265,73 @@ class Engine:
         self.log("    → ILC 가 집중 구간에 몰아 만든 보정을 먼저 따라가게 배움 (그냥 오차는 커져도 정상 · 판단은 '가중 오차' 와 아래 '집중 구간 차이')")
         self._ilcm_fitw = nmw
         return w2, nmw
+
+    def _ilcm_dvr(self, x, u, w, nm):
+        """JSH: (DVR) ILC 입력을 정답으로 구간 수 × M 조합을 계산으로 비교 (측정 없음) → 인접 채널 차이가 가장 작은 것으로.
+        비슷하면 (0.3 dB 안) 계수 적은 쪽. 지금 4 카드 값보다 0.3 dB 넘게 좋을 때만 바꿈 → (w, nm)"""
+        p = self.p
+        if p.get("model", "gmp") != "dvr" or not p.get("ilcm_dvr", True) or not isinstance(self.model, C.DVRModel):
+            return w, nm
+        m_cur = self.model
+        cur = (int(m_cur.nseg), int(m_cur.M))
+        ratio = max(1, int(round(self.sig.fs / 491.52e6)))
+        Ms = tuple(sorted({max(1, int(round(m_ * ratio))) for m_ in (2, 3, 4, 6, 8)} | {cur[1]}))
+        Ss = tuple(sorted({6, 8, 10, 12, 16} | {cur[0]}))
+        nf = min(int(p["n_fit"]), 30000)
+        self.log("  DVR 구간 수 · M 찾기 (계산만, 측정 없음): 구간 %s × M %s = %d 조합…"
+                 % ("·".join(map(str, Ss)), "·".join(map(str, Ms)), len(Ss) * len(Ms)))
+        self.on_progress(self.eta_text() + " · ILC→모델 DVR 구간 · M 찾는 중")
+        t1 = time.time()
+        res = []
+        try:
+            for S_ in Ss:
+                for M_ in Ms:
+                    self.check()
+                    m2 = C.DVRModel(S_, M_, p["lam"])
+                    if (S_, M_) == cur:
+                        w2, nm2 = w, nm
+                    else:
+                        w2, nm2 = m2.fit(x, u, n_fit=nf)
+                    self.model = m_cur if (S_, M_) == cur else m2
+                    pd2, _ = self.dpd_signal(w2)
+                    g2 = self._gap_val(x, u, pd2)
+                    res.append((g2, m2.n_coef(), S_, M_, nm2, w2))
+        finally:
+            self.model = m_cur
+            self.model.w = w
+        if not res:
+            return w, nm
+        gmin = min(r_[0] for r_ in res)
+        best = min((r_ for r_ in res if r_[0] <= gmin + 0.3), key=lambda r_: (r_[1], r_[0]))
+        g_cur = next((r_[0] for r_ in res if (r_[2], r_[3]) == cur), float("nan"))
+        self.log("  DVR 조합별 인접 채널 차이 (모델 출력 − ILC 입력 · 계산만 · 좋은 순 · ★ = 고른 것 · ◆ = 지금 4 카드 값):")
+        srt = sorted(res, key=lambda r_: r_[0])
+        show = srt[:12] + [r_ for r_ in srt[12:] if (r_[2], r_[3]) in (cur, (best[2], best[3]))]
+        for r_ in show:
+            k2 = (r_[2], r_[3])
+            self.log("    %s 구간 %-2d M%-2d : %6.1f dBc · 학습 오차 %6.1f dB · 계수 %d"
+                     % ("★" if k2 == (best[2], best[3]) else ("◆" if k2 == cur else " "), r_[2], r_[3], r_[0], r_[4], r_[1]))
+        if len(srt) > len(show):
+            self.log("    … 나머지 %d 조합 (가장 나쁜 구간 %d M%d %.1f dBc)" % (len(srt) - len(show), srt[-1][2], srt[-1][3], srt[-1][0]))
+        self.log("  %d 조합 %.1f초 · 가장 좋은: 구간 %d M%d (%.1f dBc, 계수 %d · 0.3 dB 안이면 계수 적은 쪽)"
+                 % (len(res), time.time() - t1, best[2], best[3], best[0], best[1]))
+        edge = [n_ for n_, v_, lim_ in (("구간 수", best[2], max(Ss)), ("M", best[3], max(Ms))) if v_ == lim_]
+        if edge:
+            self.log("    (고른 %s 가 찾은 범위의 끝 → 4 카드에 더 큰 값을 넣고 다시 하면 더 좋아질 수도 · 계수 · 시간은 늘어남)" % " · ".join(edge))
+        if (best[2], best[3]) == cur or not (best[0] < g_cur - 0.3):
+            self.log("  지금 구간 %d M%d (%.1f dBc) 그대로" % (cur[0], cur[1], g_cur))
+            return w, nm
+        S_, M_ = best[2], best[3]
+        m2 = C.DVRModel(S_, M_, p["lam"])
+        w2, nm2 = m2.fit(x, u, n_fit=p["n_fit"])                 # 고른 조합은 학습 샘플 수 전부로 다시
+        self.check()
+        self.model, w, nm = m2, w2, nm2
+        self.model.w = w
+        p["dvr_seg"], p["M"] = S_, M_
+        self.tag = method_label(p) + (" ← ILC" if str(getattr(self, "tag", "")).endswith("← ILC") else "")
+        self.log("  ✔ DVR 구간 %d M%d → 구간 %d M%d 로 바꿈: 인접 채널 차이 %.1f → %.1f dBc · 학습 오차 %.1f dB"
+                 "  (4 카드 칸은 그대로 · 계속 쓰려면 직접 입력)" % (cur[0], cur[1], S_, M_, g_cur, best[0], nm))
+        return w, nm
 
     def _ilcm_widen(self, x, u, w, nm):
         """(나) ILC → 모델 학습 오차가 크면 K · M · L 을 넓혀 계산으로 다시 찾음 (측정 없음) → (w, nm)"""
