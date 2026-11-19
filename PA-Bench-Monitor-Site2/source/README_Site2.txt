@@ -1,4 +1,41 @@
-PA Bench Monitor Site2 v1.4.34  (PA Bench Monitor v2.5.119 기반 · PA Analyzer 연동판)
+PA Bench Monitor Site2 v1.4.34.1_JSH  (PA Bench Monitor v2.5.119 기반 · PA Analyzer 연동판 · 원본 v1.4.34 + JSH 수정)
+
+■ v1.4.34.1_JSH - 원본 v1.4.34 에 JSH 수정 (v1.4.24.1 ~ v1.4.29.1_JSH) 을 모두 옮김
+  - ILC 중지: 원본 v1.4.31 방식 (그때까지 가장 좋은 ILC → ILC 결과로 모델) 을 그대로 쓰고, JSH 자동 저장 (…_중지.npz) 만 붙임
+  - ILC .npz 자동 저장은 JSH 방식 하나로 (한계 ACLR · ILC→모델 · 방식 비교 · 이어서 · 중지 모두, 두 번 저장 안 함)
+  - ILC→모델 모델 파라미터 로그: 원본 새 단계 (피크 안정화 · 진폭 구간별 진단) 까지 끝난 뒤
+
+■ v1.4.29.1_JSH (예전) - 원본 v1.4.29 에 JSH 수정 (v1.4.24.1 ~ v1.4.24.3_JSH) 을 모두 옮김
+  - ILC→모델 의 새 모델 (GMP + 긴 선형 등화 · GMP + 긴 메모리 트래핑) 도 4 카드 Lagging · Leading 칸을 그대로 씀
+  - 아래 JSH 변경점 (v1.4.24.x_JSH) 은 원본 v1.4.24 기준으로 만든 것 · 원본 v1.4.25 ~ v1.4.29 변경점은 그 아래
+
+■ v1.4.24.3_JSH 변경점 - DPD 반복이 나빠질 때 되돌림 · DPD OFF 보다 나쁘면 처음부터 다시
+  - 되돌림 (4 카드 '되돌림 기준', 기본 1.0 dB, 0 = 끔): ILA · DLA · ILA+보정 · 신경망 반복 중
+    ACLR 이 가장 좋았던 값보다 기준 넘게 나빠지면 그 계수 · 측정으로 돌아가 섞기 비율 μ ½ 로 이어서.
+    반복이 끝나면 마지막이 아니라 가장 좋았던 계수로 끝냄
+  - OFF 보다 나쁘면 다시 (4 카드, 기본 2 번, 0 = 끔): 끝났는데 DPD OFF 보다 ACLR 이 나쁘면
+    계수 버림 → DPD OFF 다시 재서 목표 이득 다시 → μ ½ 로 처음부터. 2 번째부터는 목표 이득 크기 = 전체 평균 이득
+    (작은 신호 이득이 커서 피크가 포화 · 최고값 제한에 걸려 나빠지는 경우). 다 해도 나쁘면 가장 좋았던 시도로
+  - 가장 좋았던 계수로 끝났는데 SG 가 마지막에 해 본 (나쁜) 신호를 내보내는 중이면 → 가장 좋았던 신호를 한 번 더 보내 확인
+    ('최고 계수 (다시 보냄)' 줄)
+  - 두 칸 모두 0 이면 예전과 똑같이 동작
+
+■ v1.4.24.2_JSH 변경점 - DPD 4 카드 학습 'ILA+보정' (ILA 뒤 측정하며 오차 보정)
+  - 학습에 [ILA+보정] 추가: ILA 를 '반복 횟수' 만큼 → 그 계수에서 '오차 보정 반복' 만큼 더
+    측정 → 출력 오차 (원래 신호 − 출력/G) → PA 기울기 (측정한 AM-AM · AM-PM) 로 입력 쪽 보정량 → GMP 계수에 '오차 보정 μ' 만큼 더함
+    · 포화 근처처럼 PA 기울기가 작은 곳도 모자라지 않게 고침 (DLA 는 기울기 1 로 봄)
+    · 나빠지면 가장 좋았던 계수로 돌아가 μ 를 반으로 (최소 0.05) · 끝나면 가장 좋았던 계수 · 신호로
+  - 4 카드 칸: '오차 보정 반복' (기본 6, 0 = 안 함) · '오차 보정 μ' (기본 0.5) - 학습 = ILA+보정 일 때만 보임 (GMP · 구간 GMP · DVR)
+  - 방식 비교에도 'GMP-ILA+보정' · 남은 시간에 오차 보정 측정 포함 · 엑셀 DPD 줄에 오차 보정 설정
+  - 학습 버튼 이름 짧게: ILA · DLA · ILC→모델 · ILA+보정 (카드 폭 안에 들어가게)
+
+■ v1.4.24.1_JSH 변경점 (원본 Site2 v1.4.24 기준)
+  - DPD 4 카드: GMP 'Lagging 항 (l+)' · 'Leading 항 (l−)' 수를 따로 설정 (빈칸 = L 과 같음 → 원본과 똑같이 동작)
+    · 'K · M · L 자동' · 'ILC→모델 K·M·L 넓힘' 이 고른 모델은 L 하나로 앞뒤 같게
+  - ILC 결과 .npz 저장 고침: 한계 ACLR (ILC) 뿐 아니라 ILC→모델 · 방식 비교 · 이어서 안의 ILC 도 저장
+    · 중지하면 그때까지 가장 좋았던 결과를 …_중지.npz 로 저장 → 🧠 ILC 결과로 모델 만들기 바로 가능
+  - ILC→모델: 찾은 모델 파라미터 (K · M · L · Lagging · Leading · 계수 수 · 학습 오차 · 큰 계수) 를 로그에
+  - 원본과 구분: EXE 이름 끝 _JSH · 위쪽 패널 바탕 녹색 (#00704A)
 
 ■ v1.4.34 변경점 - DPD 탭: 4 카드 ILC 옵션 묶음 · K·M·L 조합별 오차 로그 (DPD Tester v0.2.3.99 과 같음)
 
@@ -176,5 +213,5 @@ PA Bench Monitor Site2 v1.4.34  (PA Bench Monitor v2.5.119 기반 · PA Analyzer
   - 설정 폴더는 PA Bench Monitor 와 같음 (%APPDATA%\PABenchMonitor)
 
 ■ 실행
-  - EXE 만들기: build_exe_site2.bat  → dist\PA-Bench-Monitor-Site2_v1.4.34\PA-Bench-Monitor-Site2_v1.4.34.exe
+  - EXE 만들기: build_exe_site2.bat  → dist\PA-Bench-Monitor-Site2_v1.4.34.1_JSH\PA-Bench-Monitor-Site2_v1.4.34.1_JSH.exe
   - 빌드 없이: run_without_build_site2.bat  (python pa_bench_monitor_site2.py)

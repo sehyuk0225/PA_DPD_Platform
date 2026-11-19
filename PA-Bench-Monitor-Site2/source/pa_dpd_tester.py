@@ -651,12 +651,18 @@ TIPS = {
     "pout_tol": "Pout 허용 오차 (dB) · 기본 0.05\n실행 처음 '목표 Pout 에 SG 맞추기' 와 반복마다 '맞춤' 둘 다 이 값 (예전엔 처음 맞추기가 늘 0.1 dB 였음).\n목표 가까이 오면 두 번 재서 평균 · 맞을 때까지 최대 6 번 고침. 측정이 흔들리면 2 카드 '읽기 전 기다림' 을 늘리세요.",
     "settle_s": "읽기 전 기다림 (초) · 기본 0.5\nSG 에 신호 · 레벨을 올린 뒤 FSW 로 읽기 전에 기다리는 시간. PA 출력 · 전류가 자리 잡게.\n너무 빨리 읽어 Pout · ACLR 이 흔들리면 늘리세요 (1 ~ 2 초). 측정마다 이만큼 더 걸림.",
     "auto_cal": "Pout 보정을 기록에 맞춤\nDPD OFF 측정 때 같은 SG 의 기록 Pout 과 비교해 보정값을 자동으로 → Bench 와 Pout 이 같아짐. 켬 권장.",
-    "method": "학습 방식\nILA (간접): PA 출력 → 입력 역모델을 배움. 기본 · 안정.\nDLA (직접): 출력 오차를 직접 줄임 - 보통 0.5 ~ 3 dB 더 (조금 느림, 신경망은 ILA 로).\nILC→모델: 먼저 ILC (4 카드 ILC 반복) 로 이 PA 에 맞는 입력을 직접 찾고, 모델이 '원래 신호 → 그 입력' 을 배움 → 그 뒤 ILA 로 다듬음.\n  측정 잡음을 덜 타고 ILC 성능에 가깝게 (대신 ILC 반복만큼 시간 더).",
+    "method": "학습 방식\nILA (간접): PA 출력 → 입력 역모델을 배움. 기본 · 안정.\nDLA (직접): 출력 오차를 직접 줄임 - 보통 0.5 ~ 3 dB 더 (조금 느림, 신경망은 ILA 로).\nILA+보정: ILA 반복 뒤 '오차 보정 반복' 만큼 측정하며 출력 오차를 PA 기울기로 보정해 계수를 더 고침 (μ 따로 · 나빠지면 자동 되돌림).\nILC→모델: 먼저 ILC (4 카드 ILC 반복) 로 이 PA 에 맞는 입력을 직접 찾고, 모델이 '원래 신호 → 그 입력' 을 배움 → 그 뒤 ILA 로 다듬음.\n  측정 잡음을 덜 타고 ILC 성능에 가깝게 (대신 ILC 반복만큼 시간 더).",
     "model": "DPD 모델\nGMP: 기본 · 빠름.\n구간 GMP: Doherty 피크 켜지는 레벨 앞뒤로 GMP 두 벌 (경계 자동).\nDVR: 크기 구간마다 다른 기울기 - Doherty 꺾임에 강함.\n신경망 · 위상정규 신경망: 포화 근처 · 특이한 PA.\n[목록 편집…] 으로 안 쓰는 모델 숨기기.",
     "dvr_seg": "DVR 구간 수\n입력 크기를 몇 구간으로 나눠 기울기를 따로 줄지 (6 ~ 12, 기본 8).\n많을수록 꺾임을 잘 따라가지만 계수 · 잡음이 늘어남.",
     "K": "비선형 차수 K\n|x| 의 몇 제곱까지 쓸지 (5 ~ 9, 기본 7).\n피크 근처 압축 보정이 모자라면 ↑, 결과가 흔들리면 ↓.",
     "M": "메모리 깊이 M\n지금 + 이전 몇 샘플까지 볼지 (2 ~ 6, 기본 4).\nAM-AM 이 두껍게 퍼지면 (메모리 효과) ↑. 신경망도 씀.",
     "L": "GMP 교차 지연 L\n앞뒤 샘플 크기를 섞은 항 (0 ~ 2, 기본 1).\nDoherty · 넓은 대역이면 1 ~ 2. 0 = 메모리 다항식.",
+    "L_lag": "GMP Lagging 항 수\n지난 샘플 크기를 섞은 항 x(n-m)·|x(n-m-l)|^k, l = 1 ~ 이 값 (0 ~ 3).\n빈칸 = 위 L 과 같음. 0 = Lagging 항 안 씀.\n'K · M · L 자동' 이 켜져 있으면 자동이 고른 L 로 앞뒤 같게 (이 칸은 안 씀).",
+    "L_lead": "GMP Leading 항 수\n앞 샘플 크기를 섞은 항 x(n-m)·|x(n-m+l)|^k, l = 1 ~ 이 값 (0 ~ 3).\n빈칸 = 위 L 과 같음. 0 = Leading 항 안 씀.\n'K · M · L 자동' 이 켜져 있으면 자동이 고른 L 로 앞뒤 같게 (이 칸은 안 씀).",
+    "ila_guard_db": "되돌림 기준 (ILA · DLA · ILA+보정 · 신경망)\nDPD 반복 중 ACLR 이 지금까지 가장 좋았던 값보다 이만큼 (dB) 넘게 나빠지면\n가장 좋았던 계수로 돌아가 섞기 비율 μ 를 반으로 줄여 이어서 반복 (기본 1.0 dB, 0 = 끔).\n반복이 끝나면 마지막이 아니라 가장 좋았던 계수 · 신호로 끝냄.",
+    "retry_off": "DPD OFF 보다 나쁘면 다시 (ILA · DLA · ILA+보정 · 신경망)\n반복이 끝났는데도 DPD 결과가 DPD OFF 보다 ACLR 이 나쁘면 처음부터 다시 (기본 2 번, 0 = 끔).\n다시 할 때: 계수 버림 → DPD OFF 다시 재서 목표 이득 다시 → μ ½ 로 반복.\n2 번째부터는 목표 이득 크기를 '작은 신호 이득' 대신 '전체 평균 이득' 으로 (피크가 포화에 걸려 나빠지는 경우).\n다 해도 나쁘면 가장 좋았던 시도로 끝내고 로그에 확인할 것 (SG · 최고값 제한 · 측정 바닥).",
+    "ec_iters": "오차 보정 반복 (학습 = ILA+보정 일 때)\nILA 반복이 끝난 뒤 '측정 → 출력 오차 → 계수 고침' 을 몇 번 더 (기본 6, 0 = 안 함).\n출력 오차를 PA 기울기 (AM-AM · AM-PM) 로 입력 쪽 보정량으로 바꿔 GMP 계수에 더함 → ILA 가 멈춘 곳에서 더 내려감.\n나빠지면 가장 좋았던 계수로 돌아가 μ 를 반으로.",
+    "ec_mu": "오차 보정 μ (학습 = ILA+보정 일 때)\n한 번에 보정량을 얼마나 반영할지 (0.05 ~ 1, 기본 0.5).\n크면 빨리 내려가지만 흔들릴 수 있음 · 반복마다 ACLR 이 오르내리면 0.2 ~ 0.3.\n나빠지면 자동으로 반씩 줄어듦 (최소 0.05). 위 '섞기 비율 μ' 는 ILA 쪽 값 (따로).",
     "iters": "반복 횟수\n학습 → 측정을 몇 번 (3 ~ 5). 보통 2 ~ 3 번째에 거의 수렴.",
     "mu": "섞기 비율 μ\n새 계수를 얼마나 반영 (0.5 ~ 1, 기본 0.7). 반복마다 ACLR 이 흔들리면 0.5.",
     "peak_lim_db": "최고값 제한\nDPD 가 피크를 원래보다 몇 dB 까지 키울 수 있나 (기본 3).\nSG 최대 · PA 포화에 걸리면 2.",
@@ -758,9 +764,15 @@ class App:
         ("K", "비선형 차수 K", "7", "", "dpd"),
         ("M", "메모리 깊이 M", "4", "탭", "dpd"),
         ("L", "GMP 교차 지연 L", "1", "0 = 메모리 다항식", "dpd"),
+        ("L_lag", "  Lagging 항 (l+)", "", "빈칸 = L 과 같음", "dpd"),
+        ("L_lead", "  Leading 항 (l−)", "", "빈칸 = L 과 같음", "dpd"),
         ("dvr_seg", "DVR 구간 수", "8", "개 (6 ~ 12)", "dpd"),
         ("iters", "반복 횟수", "4", "번", "dpd"),
         ("mu", "섞기 비율 μ", "0.7", "1 = 새 계수만", "dpd"),
+        ("ila_guard_db", "되돌림 기준", "1.0", "dB 나빠지면 최고로 (0 = 끔)", "dpd"),
+        ("retry_off", "OFF 보다 나쁘면 다시", "2", "번 (0 = 끔)", "dpd"),
+        ("ec_iters", "오차 보정 반복", "6", "번 (ILA 반복 뒤 · 0 = 안 함)", "dpd"),
+        ("ec_mu", "오차 보정 μ", "0.5", "(0.05 ~ 1 · 나빠지면 자동 ½)", "dpd"),
         ("peak_lim_db", "최고값 제한", "3", "dB (원래 최고값 +)", "dpd"),
         ("lam", "정규화 λ", "1e-6", "", "dpd"),
         ("n_fit", "학습 샘플 수", "40000", "개", "dpd"),
@@ -778,9 +790,10 @@ class App:
                  "pnn": "신경망 + 위상 정규화 (진폭 왜곡부터 배움)",
                  "tnn": "PyTorch 큰 신경망 (2층 · 위상 정규화) - torch 없으면 numpy 로 대신"}
     # 모델마다 보이는 칸 (없는 칸은 모든 모델 공통)
-    MODEL_ROWS = {"K": ("gmp", "sgmp"), "L": ("gmp", "sgmp"), "dvr_seg": ("dvr",), "mu": ("gmp", "sgmp", "dvr"),
+    MODEL_ROWS = {"K": ("gmp", "sgmp"), "L": ("gmp", "sgmp"), "L_lag": ("gmp", "sgmp"), "L_lead": ("gmp", "sgmp"), "ec_iters": ("gmp", "sgmp", "dvr"), "ec_mu": ("gmp", "sgmp", "dvr"), "dvr_seg": ("dvr",), "mu": ("gmp", "sgmp", "dvr"),
                   "lam": ("gmp", "sgmp", "dvr"), "nn_hidden": ("nn", "pnn", "tnn"), "nn_epochs": ("nn", "pnn", "tnn"),
                   "_odd": ("gmp", "sgmp"), "_auto": ("gmp",), "_learn": ("gmp", "sgmp", "dvr", "nn", "pnn", "tnn")}
+    METHOD_ROWS = {"ec_iters": ("ilaec",), "ec_mu": ("ilaec",), "retry_off": ("ila", "dla", "ilaec")}        # JSH: 학습 방식마다 보이는 칸
     CMP_DEF = ["gmp:ila", "gmp:dla", "sgmp:ila", "dvr:ila", "nn:ila", "pnn:ila"]
     OS_TXT = {"2": "245.76 MSps · 인접 채널 일부만", "3": "368.64 MSps", "4": "491.52 MSps (권장)"}
 
@@ -1460,7 +1473,7 @@ class App:
 
     def params_safe(self):
         out = {}
-        for k in ("iters", "ilc_iters", "K", "M", "L", "method", "model", "auto_model", "dvr_seg", "nn_hidden"):
+        for k in ("iters", "ilc_iters", "K", "M", "L", "L_lag", "L_lead", "method", "model", "auto_model", "dvr_seg", "nn_hidden"):
             try:
                 out[k] = self.v[k].get()
             except Exception:
@@ -1691,7 +1704,7 @@ class App:
         self.dpd_body = b
         m0 = self.s.get("model") or ("nn" if self.s.get("method") == "nn" else "gmp")
         self.v["model"] = tk.StringVar(value=m0)
-        self.v["method"] = tk.StringVar(value=self.s.get("method") if self.s.get("method") in ("ila", "dla", "ilcm") else "ila")
+        self.v["method"] = tk.StringVar(value=self.s.get("method") if self.s.get("method") in ("ila", "dla", "ilcm", "ilaec") else "ila")
         ttk.Label(b, text="모델", style="Lab.TLabel").grid(row=0, column=0, sticky="w")
         mf = ttk.Frame(b, style="Card.TFrame")
         mf.grid(row=0, column=1, columnspan=2, sticky="w", pady=(0, 2))
@@ -1705,7 +1718,7 @@ class App:
         self.lbl_model = ttk.Label(b, text="", style="Unit.TLabel")
         self.lbl_model.grid(row=1, column=1, columnspan=2, sticky="w")
         ttk.Label(b, text="학습", style="Lab.TLabel").grid(row=2, column=0, sticky="w")
-        self.seg(b, self.v["method"], (("ila", "ILA (간접)"), ("dla", "DLA (직접)"), ("ilcm", "ILC→모델"))).grid(
+        self.seg(b, self.v["method"], (("ila", "ILA"), ("dla", "DLA"), ("ilcm", "ILC→모델"), ("ilaec", "ILA+보정"))).grid(
             row=2, column=1, columnspan=2, sticky="w", pady=(2, 4))
         self.dpd_rows = {"_learn": 2}
         r = 3
@@ -1768,6 +1781,7 @@ class App:
         self.dpd_row_w = {k: list(b.grid_slaves(row=r_)) for k, r_ in self.dpd_rows.items()}   # 숨겼다 다시 보이려고 미리
         self.v["model"].trace_add("write", lambda *a: self.model_changed())
         self.v["method"].trace_add("write", lambda *a: self.method_compat())
+        self.v["method"].trace_add("write", lambda *a: self.model_changed())      # JSH: 'ILA+보정' 일 때만 오차 보정 칸
         self.refresh_models()
         self.dpd_keys = [k for k, *_ in fields["dpd"]] + ["odd_only", "auto_model", "model", "method", "w_mode"]
         self.setup_undo(self.dpd_keys)
@@ -2305,6 +2319,9 @@ class App:
             self.s.setdefault("dpd_by_type", {})[new] = dict(self.s["dpd_by_type"].get(new) or {}, pout_strict=True, _strict2=True)
         if not mem and new in self.s.get("auto_kml", {}):              # 예전 버전 (K · M · L 만) 기억
             mem = dict(zip(("K", "M", "L"), (str(v) for v in self.s["auto_kml"][new])))
+        if mem:                                                          # Lagging · Leading 칸이 생기기 전 기억 → 빈칸 (L 과 같음)
+            mem.setdefault("L_lag", "")
+            mem.setdefault("L_lead", "")
         grp, changed = [], []
         if mem and getattr(self, "dpd_keys", None):
             self._undo_busy = True
@@ -2829,7 +2846,7 @@ class App:
         if mdl is not None and hasattr(mdl, "nseg"):
             return "%s · 구간%d M%d" % (meth, mdl.nseg, mdl.M)
         if mdl is not None:
-            return "%s · K%d M%d L%d" % (meth, mdl.K, mdl.M, mdl.L)
+            return "%s · K%d M%d %s" % (meth, mdl.K, mdl.M, mdl.lag_text() if hasattr(mdl, "lag_text") else "L%d" % mdl.L)
         if m in ("nn", "pnn", "tnn"):
             return "%s · M%s H%s" % (meth, q.get("M"), q.get("nn_hidden"))
         if m == "dvr":
@@ -2898,9 +2915,12 @@ class App:
             tip = "PyTorch 2층 신경망 · " + (("torch 폴더: %s" % self.s["torch_dir"]) if self.s.get("torch_dir")
                                               else "torch 폴더 안 정함") + " · 못 읽으면 numpy 신경망으로 대신"
         self.lbl_model.configure(text=tip)
-        for key, models in self.MODEL_ROWS.items():
+        meth_ = self.v["method"].get() if "method" in self.v else "ila"
+        for key in list(self.MODEL_ROWS) + [k_ for k_ in self.METHOD_ROWS if k_ not in self.MODEL_ROWS]:
+            models = self.MODEL_ROWS.get(key)
+            show = (models is None or m in models) and (key not in self.METHOD_ROWS or meth_ in self.METHOD_ROWS[key])
             for w in self.dpd_row_w.get(key, ()):
-                if m in models:
+                if show:
                     w.grid()
                 else:
                     w.grid_remove()
@@ -2960,6 +2980,7 @@ class App:
             else:
                 out.append(("%s:ila" % k, "%s-ILA" % names[k]))
                 out.append(("%s:dla" % k, "%s-DLA" % names[k]))
+                out.append(("%s:ilaec" % k, "%s-ILA+보정" % names[k]))
             out.append(("%s:ilcm" % k, "%s-ILC→모델" % names[k]))
         return out
 
@@ -3072,11 +3093,13 @@ class App:
             val = self.v[key].get().strip()
             if key in ("focus_mhz", "pout_band"):
                 p[key] = val
+            elif key in ("L_lag", "L_lead"):              # 빈칸 = None (L 과 같음)
+                p[key] = max(0, int(fnum(val, 0))) if val else None
             elif key == "fsw_rbw_khz":
                 p[key] = max(fnum(val, 0.0), 0.0) if val else 0.0
             elif key in ("smw_host", "fsw_host", "mod", "fsw_att_db", "fsw_ref_dbm"):
                 p[key] = val
-            elif key in ("n_sym", "K", "M", "L", "iters", "n_fit", "nn_hidden", "nn_epochs", "ilc_iters", "dvr_seg", "iq_avg"):
+            elif key in ("n_sym", "K", "M", "L", "ec_iters", "retry_off", "iters", "n_fit", "nn_hidden", "nn_epochs", "ilc_iters", "dvr_seg", "iq_avg"):
                 p[key] = int(fnum(val, float(dflt)))
             else:
                 p[key] = fnum(val, float(dflt))
@@ -3211,6 +3234,7 @@ class App:
             self.engine = E.Engine(p, log=lambda s: self.q.put(("log", s)), on_result=lambda r: self.q.put(("res", r)),
                                    on_progress=lambda s: self.q.put(("prog", s)), dc_reader=self.read_dc)
             self.engine.on_lock = lambda sg: self.q.put(("sglock", sg))
+            self.engine.on_ilc = lambda e, partial: self.ilc_autosave(e, e.p, partial)    # JSH: ILC 결과마다 .npz 저장
             ks = getattr(self, "_keep_sig", None)
             self._keep_sig = None
             if ks is not None and all(ks[1].get(k) == p.get(k) for k in self.SIG_KEYS):
@@ -3218,7 +3242,7 @@ class App:
                 self.engine.model = self.engine.make_model()   # 신호만 이어 쓰고 모델은 새로 (예전: 모델이 없어 'NoneType … fit' 오류)
         else:
             sig_keys = self.SIG_KEYS
-            mdl_keys = ("K", "M", "L", "odd_only", "lam", "model", "method", "nn_hidden", "nn_epochs", "dvr_seg", "torch_dir")
+            mdl_keys = ("K", "M", "L", "L_lag", "L_lead", "odd_only", "lam", "model", "method", "nn_hidden", "nn_epochs", "dvr_seg", "torch_dir")
             if any(self.engine.p.get(k) != p[k] for k in sig_keys):
                 self.engine.sig = None            # 신호가 바뀌면 다시 만들기 (모델도 같이)
                 self.engine.p.update(p)
@@ -3280,6 +3304,7 @@ class App:
         except ValueError as e:
             messagebox.showwarning(APP, str(e))
             return
+        self.ilc_ctx()                                     # JSH: ILC 파일 이름용 샘플 종류 · 신호 파일 (화면 스레드에서 읽어 둠)
         self.log("손실: In %.2f · Out %.2f dB%s%s" % (
             p["in_loss_db"], p["out_loss_db"],
             (" (%s)" % self.lbl_loss.cget("text").split("(")[-1].rstrip(")")) if self.v["bench_loss"].get() else " (칸 값)",
@@ -3344,7 +3369,7 @@ class App:
                 if k in p:
                     eng.p[k] = p[k]
             if from_ilc:                                   # 모델은 지금 4 카드 값으로
-                for k in ("model", "method", "K", "M", "L", "odd_only", "lam", "n_fit", "iters", "nn_hidden", "nn_epochs", "dvr_seg", "torch_dir",
+                for k in ("model", "method", "K", "M", "L", "L_lag", "L_lead", "odd_only", "lam", "n_fit", "iters", "nn_hidden", "nn_epochs", "dvr_seg", "torch_dir",
                           "ilcm_widen", "ilcm_lin", "ilcm_trap", "ilcm_stab", "refine_focus", "ilc_time", "fsw_guard"):
                     if k in p:
                         eng.p[k] = p[k]
@@ -3440,8 +3465,7 @@ class App:
                     eng.run_compare(compare[0], compare[1])
                     self.q.put(("cmp", (list(eng.compare), getattr(eng, "compare_off", None))))
                 elif ilc:
-                    eng.run_ilc(levels if sweep else None)
-                    self.ilc_autosave(eng, p)
+                    eng.run_ilc(levels if sweep else None)        # .npz 저장은 ILC 가 끝날 때 엔진이 알려 줌 (on_ilc)
                 elif sweep:
                     eng.run_sweep(levels, pstop if pstop == pstop else None)
                 else:
@@ -3450,7 +3474,7 @@ class App:
             except E.Stop:
                 self.q.put(("log", "■ 중지됨"))
                 if ilc and not more and (getattr(eng, "_resume", None) or {}).get("stopped"):
-                    self.ilc_autosave(eng, p)              # 중지한 ILC 도 그때까지 가장 좋은 것을 저장
+                    # (JSH: 중지한 ILC 의 .npz 저장은 엔진이 on_ilc 로 이미 함 → 여기서 또 저장 안 함)
                     self.q.put(("log", "  → [🧠 ILC 결과로 모델 만들기] = 지금까지 가장 좋은 ILC · 표에서 ILC 줄을 고르면 그 줄 신호로"))
             except Exception as e:
                 if not eng.stop:                         # 중지로 끊긴 건 오류로 안 띄움
@@ -5264,25 +5288,37 @@ class App:
         pd, sg, ghz, y = st
         return eng, r, E.np.asarray(pd, dtype=complex), sg, ghz, E.np.asarray(y, dtype=complex)
 
-    def ilc_autosave(self, eng, p):
-        """ILC 가 끝나면 결과를 파일로 (작업 스레드에서) → 📂 저장한 ILC 로 나중에 바로 모델 학습"""
+    def ilc_ctx(self):
+        """JSH: 파일 이름 · 정보에 쓸 샘플 종류 · 신호 파일 (화면 칸은 화면 스레드에서만 읽음 → 실행 시작 때 담아 둠)"""
+        try:
+            stype = (self.v["b_stype"].get().strip() if "b_stype" in self.v else "") or "샘플"
+            sig = self.v["wv_path"].get() if "wv_path" in self.v else ""
+            self._ilc_ctx_v = (stype, sig)
+        except Exception:
+            pass
+        return getattr(self, "_ilc_ctx_v", ("샘플", ""))
+
+    def ilc_autosave(self, eng, p, partial=False):
+        """ILC 가 끝나면 (또는 중지하면 그때까지 최고) 결과를 파일로 (작업 스레드에서) → 📂 저장한 ILC 로 나중에 바로 모델 학습"""
         try:
             st = getattr(eng, "_resume", None)
             if not st or st.get("kind") != "ilc":
                 return
             os.makedirs(ILC_DIR, exist_ok=True)
             r = st["best"][1] if isinstance(st["best"][1], dict) else {}
-            stype = (self.v["b_stype"].get().strip() if "b_stype" in self.v else "") or "샘플"
+            stype, sig_path = getattr(self, "_ilc_ctx_v", None) or ("샘플", "")
             stype = re.sub(r'[\\/:*?"<>|]', "_", stype)[:40]
-            name = "ILC_%s_%.3fGHz_%.1fdBc_Pout%.2f_%s.npz" % (stype, p["freq_ghz"], st["best"][0], r.get("pout", float("nan")),
-                                                                 time.strftime("%Y%m%d_%H%M%S"))
-            meta = dict(when=time.strftime("%Y-%m-%d %H:%M"), stype=stype, freq=p["freq_ghz"], sg=st["sg"], best=st["best"][0],
-                        pout=r.get("pout"), r={k: r.get(k) for k in ("aclr_l", "aclr_u", "pout", "label") if k in r},
-                        sig=self.v["wv_path"].get() if "wv_path" in self.v else "", ver=VERSION,
+            name = "ILC_%s_%.3fGHz_%.1fdBc_Pout%.2f_%s%s.npz" % (stype, p["freq_ghz"], st["best"][0], float(r.get("pout", float("nan"))),
+                                                                   time.strftime("%Y%m%d_%H%M%S"), "_중지" if partial else "")
+            meta = dict(when=time.strftime("%Y-%m-%d %H:%M"), stype=stype, freq=float(p["freq_ghz"]), sg=float(st["sg"]),
+                        best=float(st["best"][0]), pout=(float(r["pout"]) if isinstance(r.get("pout"), (int, float)) else None),
+                        r={k: (float(r[k]) if isinstance(r[k], (int, float)) else r[k]) for k in ("aclr_l", "aclr_u", "pout", "label") if k in r},
+                        sig=sig_path, ver=VERSION, partial=bool(partial), iters=int(st.get("k") or 0),
                         w_mode=st.get("w_mode_used") or p.get("w_mode"), focus_mhz=p.get("focus_mhz"), focus_w=p.get("focus_w"))
             path = eng.ilc_save(os.path.join(ILC_DIR, name), meta)
             if path:
-                self.q.put(("log", "  💾 ILC 결과 저장: %s (📂 저장한 ILC 로 나중에 바로 모델 학습)" % name))
+                self.q.put(("log", "  💾 ILC 결과 저장%s: %s\n     폴더: %s (📂 저장한 ILC 로 나중에 바로 모델 학습)"
+                            % (" (중지 · 그때까지 최고)" if partial else "", name, ILC_DIR)))
             fs = sorted((f for f in os.listdir(ILC_DIR) if f.lower().endswith(".npz")),
                         key=lambda f: os.path.getmtime(os.path.join(ILC_DIR, f)))
             for f in fs[:-60]:
@@ -5946,7 +5982,9 @@ class App:
         if p:
             names = m.term_names()
             with open(p, "w", encoding="utf-8-sig") as f:
-                f.write("# K=%d M=%d L=%d odd=%s lambda=%g\nterm,re,im\n" % (m.K, m.M, m.L, m.odd, m.lam))
+                f.write("# K=%d M=%d L=%d%s odd=%s lambda=%g\nterm,re,im\n" % (m.K, m.M, m.L,
+                        (" lag=%d lead=%d" % (m.lag, m.lead)) if getattr(m, "lag", m.L) != m.L or getattr(m, "lead", m.L) != m.L else "",
+                        m.odd, m.lam))
                 for nm, c in zip(names, m.w):
                     f.write("%s,%.9e,%.9e\n" % (nm, c.real, c.imag))
             self.remember_dir(p)
@@ -5971,7 +6009,10 @@ class App:
         p = self.params()
         ws.append(["PA DPD Tester %s" % VERSION, time.strftime("%Y-%m-%d %H:%M")])
         ws.append(["신호", "NR 100 MHz 1C · %s · %d 심볼 · ×%d · CFR %s %.1f dB" % (p["mod"], p["n_sym"], p["os"], "ON" if p["cfr_on"] else "OFF", p["papr_db"])])
-        ws.append(["DPD", "K=%d M=%d L=%d %s λ=%g μ=%g 반복 %d" % (p["K"], p["M"], p["L"], "홀수만" if p["odd_only"] else "", p["lam"], p["mu"], p["iters"])])
+        ws.append(["DPD", "K=%d M=%d L=%d%s %s λ=%g μ=%g 반복 %d" % (p["K"], p["M"], p["L"],
+                   "".join(" %s=%d" % (n_, p[k_]) for k_, n_ in (("L_lag", "Lag"), ("L_lead", "Lead")) if p.get(k_) is not None),
+                   "홀수만" if p["odd_only"] else "", p["lam"], p["mu"], p["iters"])
+                  + ((" · ILA+보정: 오차 보정 %d 번 · μ %g" % (p.get("ec_iters", 0), p.get("ec_mu", 0))) if p.get("method") == "ilaec" else "")])
         ws.append(["RF", "%.4f GHz · 입력 손실 %.2f dB · 출력 손실 %.2f dB · 보정 %.2f dB" % (p["freq_ghz"], p["in_loss_db"], p["out_loss_db"], p["cal_db"])])
         bias_ = getattr(self, "run_bias", None) or self.get_bias()
         br = self.bias_rows(bias_)
