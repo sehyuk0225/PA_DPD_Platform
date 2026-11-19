@@ -14,4 +14,4 @@ PA Bench Monitor Site2 기반 PAM 자동 측정 · DPD 플랫폼.
 ## 실행
 - 빌드 없이: `source/run_without_build_site2.bat`  (처음 한 번 `python -m pip install openpyxl PySide6 matplotlib numpy pyvisa`)
 - EXE 빌드: `source/build_exe_site2.bat`
-- EXE 이름 끝에 `_JSH` (`PA-Bench-Monitor-Site2_v1.4.24_JSH.exe`) · 위쪽 패널 (맨 위 막대 · 측정 탭 줄 · 큰 숫자 칸) 배경 녹색 #00704A (원본과 구분, `pa_bench_monitor_site2.py` 에서만 칠함)
+- EXE 이름 끝에 `_JSH` (`PA-Bench-Monitor-Site2_v1.4.24_JSH.exe`) · 위쪽 패널의 글씨 없는 바탕만 녹색 #00704A (글씨 · 큰 숫자 칸은 원래 검정) (원본과 구분, `pa_bench_monitor_site2.py` 에서만 칠함)

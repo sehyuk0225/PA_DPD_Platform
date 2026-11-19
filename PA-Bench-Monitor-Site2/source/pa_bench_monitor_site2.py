@@ -18,25 +18,17 @@ def _init2(self, *a, **k):
 
 
 # ---- JSH: 위쪽 패널 색 (원본 Bench · DPD 파일은 그대로 두고 여기서만 칠함) ----
+# '녹색 테마' 느낌만: 글씨 없는 바탕 칸 (Frame) 만 녹색. 글씨 · 큰 숫자 칸 (ACLR · Pout · PAE 등) 은 원래 검은 바탕 그대로
 JSH_GREEN = "#00704A"                # 스타벅스 그린
-JSH_LINE = "#2f9a73"                 # 칸 테두리 (녹색 바탕에서 보이게 조금 밝게)
-JSH_OLD_BG = {"#1c2530",             # 맨 위 막대
-              "#141b22",             # 측정 탭 줄 · 큰 숫자 바탕 (Bench · DPD · 그래프 새 창)
-              "#0b0f14",             # 큰 숫자 칸 안 (SG · SA · Id · ACLR · Pout · PAE · 바이어스)
-              "#0b1117"}             # 큰 숫자 아래 진행 줄
-JSH_OLD_LINE = "#2b3540"
+JSH_OLD_BG = {"#1c2530",             # 맨 위 막대 바탕
+              "#141b22"}             # 측정 탭 줄 · 큰 숫자 칸 사이 바탕 (Bench · DPD · 그래프 새 창)
 
 
 def _jsh_paint(w):
-    """원래 어두운 바탕색을 쓰는 칸만 녹색으로 (장비 칩 · 버튼 · 상태 표시처럼 자기 색이 있는 것은 그대로)"""
+    """바탕 칸 (글씨 없는 tk.Frame) 만 녹색으로. 글씨 칸 · 버튼 · 큰 숫자 칸 (#0b0f14) 과 그 안은 그대로"""
     try:
-        if str(w.cget("bg")).lower() in JSH_OLD_BG:
+        if w.winfo_class() == "Frame" and str(w.cget("bg")).lower() in JSH_OLD_BG:
             w.configure(bg=JSH_GREEN)
-    except Exception:
-        pass
-    try:
-        if str(w.cget("highlightbackground")).lower() == JSH_OLD_LINE:
-            w.configure(highlightbackground=JSH_LINE)
     except Exception:
         pass
     try:
