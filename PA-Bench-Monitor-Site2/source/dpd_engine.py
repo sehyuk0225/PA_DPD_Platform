@@ -803,6 +803,7 @@ class Engine:
         self._last_r = r
         if kind == "off":                           # JSH: 'DPD OFF 보다 나쁘면 다시' 기준 (같은 SG 일 때만 씀)
             self._off_ref = (C.aclr_worst(r), y_al, p["sg_dbm"])
+            self.jsh_obs_log()
         # 목표 Pout 고정: DPD · ILC 는 '작은 신호 이득' 직선으로 맞추려 해서 반복할수록 Pout 이 올라감
         # → 목표와의 차이만큼 목표 이득 (G) 을 줄이거나 키워 다음 반복이 목표 Pout 으로 가게 (SG 는 그대로 고정)
         tgt_ = p.get("pout_lock")
@@ -2115,6 +2116,15 @@ class Engine:
             fo = self.obs_f()
             f1, f2 = min(f1, fo), min(f2, fo)
         return cars, bwm, adj, fmax, f1, f2
+
+    def jsh_obs_log(self):
+        """JSH: FSW 관측 대역 스위치 세 개 상태를 로그에 (DPD OFF 측정 때 한 번)"""
+        try:
+            on = lambda k: "켜짐" if self.p.get(k, True) else "꺼짐"
+            self.log("  [JSH] FSW 관측 대역 ±%.0f MHz · ILC 관측 대역 안만=%s · 대역 제한 관측 대역 안=%s · DPD 학습 관측 대역 안만=%s"
+                     % (self.obs_f() / 1e6, on("ilc_obs"), on("band_obs"), on("fit_obs")))
+        except Exception:
+            pass
 
     def obs_f(self):
         """JSH: FSW 가 제대로 보는 대역 끝 (Hz, ±) = FSW I/Q 대역 / 2 (모르면 0.4 × 샘플레이트) · 디지털 끝 (fs/2) 안"""

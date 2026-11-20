@@ -1,6 +1,12 @@
-PA Bench Monitor Site2 v1.4.42.2_JSH  (PA Bench Monitor v2.5.127 기반 · PA Analyzer 연동판 · 원본 v1.4.42 + JSH 수정)
+PA Bench Monitor Site2 v1.4.42.3_JSH  (PA Bench Monitor v2.5.127 기반 · PA Analyzer 연동판 · 원본 v1.4.42 + JSH 수정)
 
-■ v1.4.42.2_JSH - FSW 관측 대역 밖은 고치지도 · 맞추지도 않음 (400 MHz 처럼 신호가 샘플레이트에 비해 넓을 때)
+■ v1.4.42.3_JSH - FSW 관측 대역 스위치 세 개를 한곳에 · 로그로 확인
+  - 5 카드 맨 위 쪽 (중지 버튼 바로 아래) 새 묶음 [★ JSH · FSW 관측 대역 안만 (400 MHz 평평한 바닥 대책)] 에
+    [ILC 는 FSW 관측 대역 안만 고침] · [대역 제한을 FSW 관측 대역 안으로] · [DPD 학습은 FSW 관측 대역 안만] 을 모음
+    (예전엔 5 카드 · 6 카드에 흩어져 있어 찾기 어려웠음 · 동작은 v1.4.42.2_JSH 와 같음)
+  - DPD OFF 측정 때 로그에 '[JSH] FSW 관측 대역 ±○○○ MHz · … =켜짐/꺼짐' 한 줄
+
+■ v1.4.42.2_JSH (예전) - FSW 관측 대역 밖은 고치지도 · 맞추지도 않음 (400 MHz 처럼 신호가 샘플레이트에 비해 넓을 때)
   - 증상: 2CC 400 MHz · 983 MSps 에서 ILC 는 −50 dBc 인데 GMP · DVR (ILA · DLA · ILA+보정 · ILC→모델 모두) 가 −32 dBc 에서 멈춤,
     인접이 평평하게 들뜸. ILC 입력을 보니 FSW 가 못 보는 대역 끝 (±393 ~ 491 MHz, 특히 위쪽) 에 큰 성분이 쌓여 있었음
   - 5 카드 [ILC 는 FSW 관측 대역 안만 고침] (기본 켬): ILC 가 FSW I/Q 대역 (≈ ±0.4 × 샘플레이트) 밖은 고치지 않음
@@ -258,5 +264,5 @@ PA Bench Monitor Site2 v1.4.42.2_JSH  (PA Bench Monitor v2.5.127 기반 · PA An
   - 설정 폴더는 PA Bench Monitor 와 같음 (%APPDATA%\PABenchMonitor)
 
 ■ 실행
-  - EXE 만들기: build_exe_site2.bat  → dist\PA-Bench-Monitor-Site2_v1.4.42.2_JSH\PA-Bench-Monitor-Site2_v1.4.42.2_JSH.exe
+  - EXE 만들기: build_exe_site2.bat  → dist\PA-Bench-Monitor-Site2_v1.4.42.3_JSH\PA-Bench-Monitor-Site2_v1.4.42.3_JSH.exe
   - 빌드 없이: run_without_build_site2.bat  (python pa_bench_monitor_site2.py)

@@ -1946,10 +1946,6 @@ class App:
         sec("반복 · 결과")
         opt("force_iters", "반복 횟수 끝까지", "목표 ACLR 에 닿아도 멈추지 않음 (DPD · ILC)", False,
             "켜면 목표 ACLR 에 닿아도 4 카드 반복 횟수 (ILC 는 ILC 반복) 만큼 끝까지 돌림")
-        opt("fit_obs", "DPD 학습은 FSW 관측 대역 안만", "ILA · DLA · ILA+보정 (JSH)", True,
-            "학습 (ILA 포스트디스토터 · DLA · 오차 보정) 을 FSW 가 실제로 보는 대역 (≈ ±0.4 × 샘플레이트) 안에서만 맞춤.\n"
-            "밖은 FSW 가 못 봐서 측정 출력과 DPD 신호가 안 맞음 → 그대로 맞추면 계수가 틀어져 인접에 평평한 바닥.\n"
-            "GMP · 구간 GMP · DVR 등 (신경망 제외) · 끄면 원본처럼 전 대역")
         mf_ = ttk.Frame(b, style="Card.TFrame")
         mf_.grid(row=nxt(), column=0, columnspan=2, sticky="ew", pady=(6, 0))
         self.v["more_n"] = tk.StringVar(value=str(self.s.get("more_n", "5")))
@@ -2010,6 +2006,20 @@ class App:
                                       activebackground="#b71c1c", activeforeground="white", disabledforeground="#e0e0e0",
                                       relief="flat", bd=0, font=("맑은 고딕", 10, "bold"), pady=3, state="disabled", cursor="hand2")
         wide(self.btn_stop_ilc, pady=(4, 0))
+        # ── JSH: FSW 관측 대역 (세 스위치 한곳에)
+        sec("★ JSH · FSW 관측 대역 안만 (400 MHz 평평한 바닥 대책)")
+        opt("ilc_obs", "ILC 는 FSW 관측 대역 안만 고침", "밖 (≈ ±0.4 × 샘플레이트 너머) 은 그대로 (JSH)", True,
+            "FSW 는 I/Q 대역 (≈ 0.8 × 샘플레이트) 안만 제대로 봄. 그 밖 (예: 983 MSps 면 ±393 ~ 491 MHz) 은 필터 경사 · 잡음뿐이라\n"
+            "ILC 가 고치면 엉뚱한 성분이 쌓임 (ACLR 엔 안 보여도 모델이 그걸 맞추려다 인접에 평평한 바닥이 생김).\n"
+            "켜면 관측 대역 밖은 고치지 않음. 끄면 원본처럼 ±샘플레이트/2 전 대역")
+        opt("band_obs", "대역 제한을 FSW 관측 대역 안으로", "400 MHz 처럼 '그다음 채널' 이 샘플레이트 밖일 때 (JSH)", True,
+            "원본 '대역 제한 학습' · '주파수별 학습 오차' 는 '그다음 채널 끝' (신호 끝 + 2 × 인접 폭) 까지를 남김.\n"
+            "400 MHz · 983 MSps 면 그 끝이 600 MHz 로 디지털 끝 (491 MHz) 보다 커서 아무것도 안 걸러짐.\n"
+            "켜면 그 끝을 FSW 관측 대역 (FSW I/Q 대역 / 2) 안으로 줄임")
+        opt("fit_obs", "DPD 학습은 FSW 관측 대역 안만", "ILA · DLA · ILA+보정 (JSH)", True,
+            "학습 (ILA 포스트디스토터 · DLA · 오차 보정) 을 FSW 가 실제로 보는 대역 (≈ ±0.4 × 샘플레이트) 안에서만 맞춤.\n"
+            "밖은 FSW 가 못 봐서 측정 출력과 DPD 신호가 안 맞음 → 그대로 맞추면 계수가 틀어져 인접에 평평한 바닥.\n"
+            "GMP · 구간 GMP · DVR 등 (신경망 제외) · 끄면 원본처럼 전 대역")
         # ── ILC 결과로 모델
         sec("ILC 결과로 모델 (DPD 모델로 옮기기)")
         self.btn_ilc2m = wide(ttk.Button(B[0], text="🧠 ILC 결과로 모델 만들기 (ILC 다시 안 돌림)",
@@ -2046,10 +2056,6 @@ class App:
         self._ilc_box_tip = Tip(self.ilc_box_f, "")
         bx_.bind("<Configure>", lambda e: self.ilc_box_update())
         self.root.after(500, self.ilc_box_update)
-        opt("ilc_obs", "ILC 는 FSW 관측 대역 안만 고침", "밖 (≈ ±0.4 × 샘플레이트 너머) 은 그대로 (JSH)", True,
-            "FSW 는 I/Q 대역 (≈ 0.8 × 샘플레이트) 안만 제대로 봄. 그 밖 (예: 983 MSps 면 ±393 ~ 491 MHz) 은 필터 경사 · 잡음뿐이라\n"
-            "ILC 가 고치면 엉뚱한 성분이 쌓임 (ACLR 엔 안 보여도 모델이 그걸 맞추려다 인접에 평평한 바닥이 생김).\n"
-            "켜면 관측 대역 밖은 고치지 않음. 끄면 원본처럼 ±샘플레이트/2 전 대역")
         opt("ilc_time", "ILC 는 시간 영역으로", "모델이 배우기 좋은 고른 정답", False,
             "켜면 [한계 ACLR (ILC)] 동안만 보정 기준을 시간 영역으로 → 전 대역을 고르게 고친 정답\n"
             "(집중 구간 ILC 정답은 주파수 경계가 날카로워 GMP · 신경망이 못 따라감). 모델 다듬기는 원래 보정 기준대로")
@@ -2062,10 +2068,6 @@ class App:
         opt("ilcm_bandlim", "대역 제한 학습", "ILC 입력을 그다음 채널 끝까지만 · 주파수별 오차 로그", True,
             "ILC 는 측정 범위 (채널 · 인접 · 그다음) 밖은 결과를 확인 못 해 그 대역에 성분이 쌓일 수 있음 → 모델이 못 배움.\n"
             "켜면 ILC 입력에서 그 바깥을 걸러 내고 학습 (좋아질 때만).\n로그 '주파수별 학습 오차' 로 오차가 어디 몰렸는지 확인")
-        opt("band_obs", "대역 제한을 FSW 관측 대역 안으로", "400 MHz 처럼 '그다음 채널' 이 샘플레이트 밖일 때 (JSH)", True,
-            "원본 '대역 제한 학습' · '주파수별 학습 오차' 는 '그다음 채널 끝' (신호 끝 + 2 × 인접 폭) 까지를 남김.\n"
-            "400 MHz · 983 MSps 면 그 끝이 600 MHz 로 디지털 끝 (491 MHz) 보다 커서 아무것도 안 걸러짐.\n"
-            "켜면 그 끝을 FSW 관측 대역 (FSW I/Q 대역 / 2) 안으로 줄임")
         opt("ilcm_stab", "피크 안정화 + 부드러운 제한", "K ↓ · 정규화 ↑ 시험 · 제한을 tanh 로 (출렁임 줄임)", True,
             "포화 근처 피크에서 모델 출력이 출렁여 최고값 제한에 잘리면 넓게 퍼지는 왜곡이 생김.\n"
             "K 를 낮추고 · 정규화 λ 를 키운 조합을 계산으로 시험해 '인접 채널 차이' 가 가장 작은 것으로 바꾸고,\n"
