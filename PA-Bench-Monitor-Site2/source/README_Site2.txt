@@ -1,12 +1,11 @@
-PA Bench Monitor Site2 v1.4.42_JSH  (PA Bench Monitor v2.5.127 기반 · PA Analyzer 연동판 · 원본 v1.4.42 + JSH 수정)
+PA Bench Monitor Site2 v1.4.42.1_JSH  (PA Bench Monitor v2.5.127 기반 · PA Analyzer 연동판 · 원본 v1.4.42 + JSH 수정)
 
-■ v1.4.42_JSH - 원본 v1.4.42 에 JSH 수정 (v1.4.24.1 ~ v1.4.36.1_JSH) 을 모두 옮김
-  - 원본 화면 정리에 맞춤: 4 카드 학습 = ILA (간접) · DLA (직접) · ILA+보정 (JSH) · ILC→모델 은 5 카드 🧠 버튼 (원본대로)
-  - DVR 구간 수 · M 찾기가 원본 (v1.4.42 'K·M·L 자동 넓힘' 안, 학습 오차 −40 dB 보다 나쁠 때 · 검증 오차 기준) 과
-    JSH (늘 · 인접 채널 차이 기준) 두 가지 → 5 카드 [DVR 구간 수 · M 자동 찾기 (ACLR 기준)] 를 켜면 JSH 것만, 끄면 원본 것
-  - 원본의 DVR 'K·M·L 자동' (보통 DPD 실행 때 실측으로 고르기) 은 그대로
+■ v1.4.42.1_JSH - 원본 v1.4.42 에 JSH 수정을 옮김 · DVR 구간 수 · M 찾기는 원본 기능만
+  - JSH 'DVR 구간 수 · M 자동 찾기 (ACLR 기준)' (v1.4.36.1_JSH) 은 뺌 → 원본 v1.4.42 의 DVR 찾기
+    ('K·M·L 자동 넓힘' 안 · 보통 DPD 의 K·M·L 자동) 만 씀 (원본과 같은 결과)
+  - 4 카드 학습 = ILA (간접) · DLA (직접) · ILA+보정 (JSH) · ILC→모델 은 원본대로 5 카드 🧠 버튼
 
-■ v1.4.36.1_JSH (예전) - ILC→모델: DVR 구간 수 · M 자동 찾기
+■ v1.4.36.1_JSH (예전 · v1.4.42.1_JSH 에서 뺌 - 원본 DVR 찾기로) - ILC→모델: DVR 구간 수 · M 자동 찾기
   - 모델 = DVR 이고 학습 = ILC→모델 (또는 🧠 ILC 결과로 모델 만들기) 일 때, ILC 입력을 정답으로
     구간 수 6·8·10·12·16 × M 2·3·4·6·8 (+ 지금 4 카드 값) 을 측정 없이 계산으로 비교
     → '인접 채널 차이 (모델 출력 − ILC 입력)' 가 가장 작은 조합으로 (0.3 dB 안이면 계수 적은 쪽)
@@ -250,5 +249,5 @@ PA Bench Monitor Site2 v1.4.42_JSH  (PA Bench Monitor v2.5.127 기반 · PA Anal
   - 설정 폴더는 PA Bench Monitor 와 같음 (%APPDATA%\PABenchMonitor)
 
 ■ 실행
-  - EXE 만들기: build_exe_site2.bat  → dist\PA-Bench-Monitor-Site2_v1.4.42_JSH\PA-Bench-Monitor-Site2_v1.4.42_JSH.exe
+  - EXE 만들기: build_exe_site2.bat  → dist\PA-Bench-Monitor-Site2_v1.4.42.1_JSH\PA-Bench-Monitor-Site2_v1.4.42.1_JSH.exe
   - 빌드 없이: run_without_build_site2.bat  (python pa_bench_monitor_site2.py)

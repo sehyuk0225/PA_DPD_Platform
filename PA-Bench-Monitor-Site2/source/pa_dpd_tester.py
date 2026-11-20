@@ -2049,12 +2049,6 @@ class App:
             "ILC 결과로 모델 만들기 뒤 다듬기 반복: 보정 기준이 집중 구간 · ACLR 채널이면 DLA 로 (가중이 들어가는 방식)")
         opt("ilcm_widen", "학습 오차 크면 K·M·L 자동 넓힘", "−40 dB 보다 나쁘면 다시 찾음 (GMP · DVR 구간·M)", True,
             "GMP: K 5~11 × M 1~8 × L 0~3 · DVR: 구간 3~16 × M 1~8 을 측정 없이 계산으로 찾아 더 좋은 조합으로.\n끝나면 로그에 '판정'")
-        opt("ilcm_dvr", "DVR 구간 수 · M 자동 찾기 (ACLR 기준)", "모델 = DVR · 늘 · 인접 채널 차이로 (JSH)", True,
-            "모델이 DVR 이면 학습 오차와 상관없이 ILC 입력을 정답으로 구간 수 6·8·10·12·16 × M 2·3·4·6·8 을 측정 없이 계산으로 비교\n"
-            "→ '인접 채널 차이 (모델 출력 − ILC 입력)' 가 가장 작은 조합으로 (0.3 dB 안이면 계수 적은 쪽).\n"
-            "지금 4 카드 값보다 0.3 dB 넘게 좋을 때만 바꿈 · 조합별 결과는 로그에 (★ 고른 것 · ◆ 지금 값).\n"
-            "켜 두면 위 'K·M·L 자동 넓힘' 의 DVR 찾기 (검증 오차 기준) 는 건너뜀 (두 번 찾지 않게) · 끄면 그쪽이 함.\n"
-            "4 카드 칸 값은 그대로 두니, 고른 조합을 계속 쓰려면 직접 입력")
         opt("ilcm_lin", "긴 선형 등화 ±64 탭", "넓은 대역 리플 · 지연", True,
             "앞뒤 ±64 탭 선형 항을 GMP 와 같이 학습 → 400 MHz 대역 안 이득 리플 · 지연까지.\n로그 '선형 진단'")
         opt("ilcm_bandlim", "대역 제한 학습", "ILC 입력을 그다음 채널 끝까지만 · 주파수별 오차 로그", True,
@@ -3246,7 +3240,6 @@ class App:
         p["auto_model"] = bool(self.v["auto_model"].get())
         p["auto_wide"] = bool(self.v["auto_wide"].get())
         p["ilcm_widen"] = bool(self.v["ilcm_widen"].get())
-        p["ilcm_dvr"] = bool(self.v["ilcm_dvr"].get())          # JSH
         p["ilcm_lin"] = bool(self.v["ilcm_lin"].get())
         p["ilcm_trap"] = bool(self.v["ilcm_trap"].get())
         p["ilcm_stab"] = bool(self.v["ilcm_stab"].get())
@@ -3515,7 +3508,7 @@ class App:
                     eng.p[k] = p[k]
             if from_ilc:                                   # 모델은 지금 4 카드 값으로
                 for k in ("model", "method", "K", "M", "L", "L_lag", "L_lead", "odd_only", "lam", "n_fit", "fit_us", "fit_segs", "iters", "nn_hidden", "nn_epochs", "dvr_seg", "torch_dir",
-                          "ilcm_widen", "ilcm_dvr", "ilcm_lin", "ilcm_trap", "ilcm_stab", "ilcm_bandlim", "refine_focus", "ilc_time", "fsw_guard"):
+                          "ilcm_widen", "ilcm_lin", "ilcm_trap", "ilcm_stab", "ilcm_bandlim", "refine_focus", "ilc_time", "fsw_guard"):
                     if k in p:
                         eng.p[k] = p[k]
             self.cmp_mode = False

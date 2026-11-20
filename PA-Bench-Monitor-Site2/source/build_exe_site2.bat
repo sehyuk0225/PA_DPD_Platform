@@ -2,7 +2,7 @@
 cd /d %~dp0
 set PYTHONUTF8=1
 echo ============================================
-echo  PA Bench Monitor Site2 v1.4.42_JSH (Bench v2.5.127) - EXE build
+echo  PA Bench Monitor Site2 v1.4.42.1_JSH (Bench v2.5.127) - EXE build
 echo  (RF PA Analyzer graph window included: PySide6 + matplotlib)
 echo ============================================
 python --version
@@ -17,7 +17,7 @@ if errorlevel 1 (
   pause
   exit /b 1
 )
-set NAME=PA-Bench-Monitor-Site2_v1.4.42_JSH
+set NAME=PA-Bench-Monitor-Site2_v1.4.42.1_JSH
 python -m PyInstaller --noconfirm --clean --onedir --windowed --name "%NAME%" --icon assets\bench.ico ^
   --paths pa_analyzer\src ^
   --hidden-import analyzer_child --hidden-import psu_panel --hidden-import site2 --hidden-import pa_bench_monitor --collect-submodules pyvisa --copy-metadata pyvisa ^
