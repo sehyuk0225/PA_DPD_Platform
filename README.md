@@ -26,3 +26,7 @@ PA Bench Monitor Site2 기반 PAM 자동 측정 · DPD 플랫폼.
 - ~~(v1.4.36.1) ILC→모델 DVR 구간 수 · M 자동 찾기 (JSH)~~ → v1.4.42.1 에서 뺌 (원본 v1.4.42 DVR 찾기만 씀)
 - (v1.4.42) 원본 v1.4.42 로 올림 - 4 카드 학습 ILA · DLA · ILA+보정 (ILC→모델 은 원본대로 5 카드 🧠)
 - (v1.4.42.1) JSH DVR 찾기 뺌 → DVR 구간 수 · M 찾기는 원본 v1.4.42 기능만 (원본과 같은 결과)
+
+## 도구
+- `tools/ilc_diag.py` : 저장한 ILC 결과 (`.npz`) 진단 - 모델이 ILC 입력을 못 따라가는 이유 (켤레 · I/Q 이미지 · 긴 메모리 · 스퍼 · 크기별 · 시간 변화) 를 **숫자만** 출력 (파형 데이터 안 나옴)
+  - 실행: `python tools/ilc_diag.py` (가장 최근 `%APPDATA%\PADPDTester\ilc\*.npz`) 또는 `python tools/ilc_diag.py 파일.npz [--adj 200]` · Python 3 + numpy
