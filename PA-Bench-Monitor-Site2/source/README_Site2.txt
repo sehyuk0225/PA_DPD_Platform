@@ -1,6 +1,16 @@
-PA Bench Monitor Site2 v1.4.42.3_JSH  (PA Bench Monitor v2.5.127 기반 · PA Analyzer 연동판 · 원본 v1.4.42 + JSH 수정)
+PA Bench Monitor Site2 v1.4.42.4_JSH  (PA Bench Monitor v2.5.127 기반 · PA Analyzer 연동판 · 원본 v1.4.42 + JSH 수정)
 
-■ v1.4.42.3_JSH - FSW 관측 대역 스위치 세 개를 한곳에 · 로그로 확인
+■ v1.4.42.4_JSH - 로그 자동 저장 · 중요한 줄 【코드】 표시
+  - 로그를 실행 ([DPD 실행] · [한계 ACLR] · [ILC 결과로 모델] · 방식 비교 …) 마다 새 파일로 자동 저장
+    %APPDATA%\PADPDTester\logs\DPD_날짜_시각_종류.txt (최근 300 개) · 로그 탭 [📂 로그 폴더]
+  - 중요한 줄은 앞에 【코드】 · 노란 굵은 글씨, 실행이 끝나면 【코드】 줄만 모아 '■■ 요약' 으로 한 번 더
+      【A1】 DPD OFF ACLR · SG · 샘플레이트        【A2】 FSW 관측 대역 · JSH 스위치 세 개 켜짐/꺼짐
+      【B1】 ILC 최고 ACLR                         【B2】 ILC 입력의 FSW 관측 대역 밖 성분 (아래 · 위 dBc, ilc_diag 없이)
+      【C1】 DPD 최종 ACLR · Pout · EVM            【C2】 되돌림  【C3】 다시 해도 DPD OFF 보다 나쁨
+      【D1】 모델 vs ILC 차이  【D2】 주파수별 학습 오차  【D3】 판정
+      【E1】 모델 파라미터 (K · M · L · Lagging · Leading · 계수 수 · 학습 오차)   【F1】 최고값 제한에 걸린 샘플
+
+■ v1.4.42.3_JSH (예전) - FSW 관측 대역 스위치 세 개를 한곳에 · 로그로 확인
   - 5 카드 맨 위 쪽 (중지 버튼 바로 아래) 새 묶음 [★ JSH · FSW 관측 대역 안만 (400 MHz 평평한 바닥 대책)] 에
     [ILC 는 FSW 관측 대역 안만 고침] · [대역 제한을 FSW 관측 대역 안으로] · [DPD 학습은 FSW 관측 대역 안만] 을 모음
     (예전엔 5 카드 · 6 카드에 흩어져 있어 찾기 어려웠음 · 동작은 v1.4.42.2_JSH 와 같음)
@@ -264,5 +274,5 @@ PA Bench Monitor Site2 v1.4.42.3_JSH  (PA Bench Monitor v2.5.127 기반 · PA An
   - 설정 폴더는 PA Bench Monitor 와 같음 (%APPDATA%\PABenchMonitor)
 
 ■ 실행
-  - EXE 만들기: build_exe_site2.bat  → dist\PA-Bench-Monitor-Site2_v1.4.42.3_JSH\PA-Bench-Monitor-Site2_v1.4.42.3_JSH.exe
+  - EXE 만들기: build_exe_site2.bat  → dist\PA-Bench-Monitor-Site2_v1.4.42.4_JSH\PA-Bench-Monitor-Site2_v1.4.42.4_JSH.exe
   - 빌드 없이: run_without_build_site2.bat  (python pa_bench_monitor_site2.py)

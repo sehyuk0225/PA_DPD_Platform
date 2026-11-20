@@ -1181,16 +1181,16 @@ class Engine:
             name = MODEL_NAMES.get(mdl, mdl)
             nmt = (" · 학습 오차 %.1f dB" % nm) if nm is not None and nm == nm else ""
             if hasattr(m, "H"):                                     # 신경망
-                self.log("  ▣ %s 모델 파라미터: %s · M%d · 은닉 %d · 가중치 %d 개%s" % (title, name, m.M, m.H, m.n_coef(), nmt))
+                self.klog("E1", "▣ %s 모델 파라미터: %s · M%d · 은닉 %d · 가중치 %d 개%s" % (title, name, m.M, m.H, m.n_coef(), nmt))
                 return
             if hasattr(m, "nseg"):                                  # DVR
-                self.log("  ▣ %s 모델 파라미터: %s · 구간 %d · M%d · λ %g · 계수 %d 개%s" % (title, name, m.nseg, m.M, m.lam, m.n_coef(), nmt))
+                self.klog("E1", "▣ %s 모델 파라미터: %s · 구간 %d · M%d · λ %g · 계수 %d 개%s" % (title, name, m.nseg, m.M, m.lam, m.n_coef(), nmt))
             else:
                 ko = m.orders()
                 kx = len([k for k in ko if k > 1])
                 n_mp, n_lag, n_lead = m.M * len(ko), m.M * getattr(m, "lag", m.L) * kx, m.M * getattr(m, "lead", m.L) * kx
                 seg = 2 if hasattr(m, "t") and hasattr(m, "_gate") else 1        # 구간 GMP = 두 벌
-                self.log("  ▣ %s 모델 파라미터: %s · K%d (%s) · M%d · L%d · Lagging %d · Leading %d · λ %g · 계수 %d 개%s"
+                self.klog("E1", "▣ %s 모델 파라미터: %s · K%d (%s) · M%d · L%d · Lagging %d · Leading %d · λ %g · 계수 %d 개%s"
                          % (title, name, m.K, "홀수만 " + ",".join(map(str, ko)) if m.odd else "1~%d" % m.K, m.M, m.L,
                             getattr(m, "lag", m.L), getattr(m, "lead", m.L), m.lam, m.n_coef(), nmt))
                 extra = ""
@@ -1260,6 +1260,12 @@ class Engine:
             self.log("▶ %s가장 좋았던 계수 신호를 다시 보냄 (SG 에 남기고 확인)" % label_pre)
             _yb, r = self.measure(pd, "%s최고 계수 (다시 보냄)" % label_pre, 99, None, step)
         self.last_pd, self.last_sg = pd, self.p["sg_dbm"]
+        try:                                                # JSH: 이 레벨 DPD 최종
+            rr = r or last
+            self.klog("C1", "DPD 최종 (%s): ACLR %.1f / %.1f dBc · Pout %.2f dBm · EVM %.2f %%"
+                      % (method_label(self.p), rr["aclr_l"], rr["aclr_u"], rr["pout"], rr.get("evm", float("nan"))))
+        except Exception:
+            pass
         self._resume = dict(kind="dpd", sg=self.p["sg_dbm"], w=w, pd=pd, last=(r or last), y_al=getattr(self, "_y_last", y_al))
         return (r or last), w, pd
 
@@ -1305,7 +1311,7 @@ class Engine:
                     break
                 self.log("  다시 %d: %.1f dBc (DPD OFF %.1f 보다 아직 나쁨)" % (att, sc_n, off[0]))
             else:
-                self.log("  ⚠ %d 번 다시 해도 DPD OFF 보다 나쁨 → 가장 좋았던 %.1f dBc 로 · PA 여유 (SG ↓) · 최고값 제한 · 측정 바닥 확인"
+                self.klog("C3", "⚠ %d 번 다시 해도 DPD OFF 보다 나쁨 → 가장 좋았던 %.1f dBc 로 · PA 여유 (SG ↓) · 최고값 제한 · 측정 바닥 확인"
                          % (n_try, best[0]))
         finally:
             p["mu"] = mu0
@@ -1369,7 +1375,7 @@ class Engine:
             self.model.w = w
             pd, n_clip = self.dpd_signal(w)
             if n_clip:
-                self.log("  최고값 제한 (+%.1f dB) 에 걸린 샘플 %d 개" % (self.p["peak_lim_db"], n_clip))
+                self.klog("F1", "최고값 제한 (+%.1f dB) 에 걸린 샘플 %d 개" % (self.p["peak_lim_db"], n_clip))
             y_al, last = self.measure(pd, "%sDPD %d" % (label_pre, it), it, nmse, step)
             kb = getattr(self, "_keep_best", None)
             if kb is None and guard > 0:
@@ -1379,7 +1385,7 @@ class Engine:
                 elif sc == sc and sc > best[0] + guard:
                     # JSH 되돌림: 가장 좋았던 것보다 기준 넘게 나빠짐 → 그 계수 · 측정으로 돌아가 μ ½ 로 이어서
                     mu_eff = max(mu_eff * 0.5, 0.1)
-                    self.log("  ↩ 되돌림: %.1f dBc (최고 %.1f 보다 %.1f dB 나쁨 > %.1f) → 가장 좋았던 계수로 · μ %.2f"
+                    self.klog("C2", "↩ 되돌림: %.1f dBc (최고 %.1f 보다 %.1f dB 나쁨 > %.1f) → 가장 좋았던 계수로 · μ %.2f"
                              % (sc, best[0], sc - best[0], guard, mu_eff))
                     _s, w, pd, last, y_al = best
                     self.model.w = w
@@ -1476,7 +1482,7 @@ class Engine:
             self.model.w = w_new
             pd_new, n_clip = self.dpd_signal(w_new)
             if n_clip:
-                self.log("  최고값 제한 (+%.1f dB) 에 걸린 샘플 %d 개" % (p["peak_lim_db"], n_clip))
+                self.klog("F1", "최고값 제한 (+%.1f dB) 에 걸린 샘플 %d 개" % (p["peak_lim_db"], n_clip))
             y_new, r = self.measure(pd_new, "%s오차 보정 %d" % (label_pre, it), it, nmse, step)
             sc = C.aclr_worst(r)
             if sc == sc and sc < best[0]:
@@ -1769,7 +1775,7 @@ class Engine:
             n_clip = int(np.sum(a > lim))
             u = np.where(a > lim, u * lim / np.maximum(a, 1e-12), u)
             if n_clip:
-                self.log("  최고값 제한 (+%.1f dB) 에 걸린 샘플 %d 개 (많으면 ILC 가 못 내려감 → 4 카드 최고값 제한 ↑)" % (p["peak_lim_db"], n_clip))
+                self.klog("F1", "최고값 제한 (+%.1f dB) 에 걸린 샘플 %d 개 (많으면 ILC 가 못 내려감 → 4 카드 최고값 제한 ↑)" % (p["peak_lim_db"], n_clip))
             nm = 10 * np.log10(np.mean(np.abs(e) ** 2) / np.mean(np.abs(x) ** 2))
             y_al, r = self.measure(u, "%sILC %d" % (label_pre, k), k, nm, step, kind="ilc")
             sc = C.aclr_worst(r)
@@ -1798,7 +1804,8 @@ class Engine:
         r_fin = self._final_mod(best[2], label_pre, step, kind="ilc")
         self.last_pd, self.last_sg = best[2], self.p["sg_dbm"]       # 최종 신호 = ILC 가장 좋았던 입력
         best = (best[0], r_fin or best[1])
-        self.log("  ✔ 한계 ACLR (ILC 최고): %.1f / %.1f dBc · Pout %.2f dBm" % (best[1]["aclr_l"], best[1]["aclr_u"], best[1]["pout"]))
+        self.klog("B1", "✔ 한계 ACLR (ILC 최고): %.1f / %.1f dBc · Pout %.2f dBm" % (best[1]["aclr_l"], best[1]["aclr_u"], best[1]["pout"]))
+        self.ilc_oob_log(self._ilc_u)                       # JSH
         return best[1]
 
     def run_ilc(self, levels=None):
@@ -1992,7 +1999,7 @@ class Engine:
             self._ilcm_ampdiag(x, u, w)
             self.log_model_params("ILC→모델 학습", w, nm)        # JSH
             pd, n_clip = self.dpd_signal(w)
-            self.log("  최고값 제한 (+%.1f dB) 에 걸린 샘플 %d 개%s" % (p["peak_lim_db"], n_clip,
+            self.klog("F1", "최고값 제한 (+%.1f dB) 에 걸린 샘플 %d 개%s" % (p["peak_lim_db"], n_clip,
                      "  ⚠ 많음 → 모델 출력 피크가 잘림 (4 카드 최고값 제한 ↑)" if n_clip > 0.0005 * len(pd) else ""))
             self.ilcm_gap(x, u, pd)
             if abs(st.get("sg_end", st["sg"]) - st["sg"]) > 0.005:
@@ -2117,14 +2124,40 @@ class Engine:
             f1, f2 = min(f1, fo), min(f2, fo)
         return cars, bwm, adj, fmax, f1, f2
 
+    def klog(self, code, s):
+        """JSH: 중요한 줄 = 【코드】 표시 (화면 · 파일 로그에서 찾기 쉽게 · 실행 끝에 요약으로 다시 모음)"""
+        self.log("【%s】 %s" % (code, str(s).strip()))
+
     def jsh_obs_log(self):
-        """JSH: FSW 관측 대역 스위치 세 개 상태를 로그에 (DPD OFF 측정 때 한 번)"""
+        """JSH: DPD OFF 결과 · FSW 관측 대역 스위치 세 개 상태 (DPD OFF 측정 때 한 번)"""
         try:
             on = lambda k: "켜짐" if self.p.get(k, True) else "꺼짐"
-            self.log("  [JSH] FSW 관측 대역 ±%.0f MHz · ILC 관측 대역 안만=%s · 대역 제한 관측 대역 안=%s · DPD 학습 관측 대역 안만=%s"
-                     % (self.obs_f() / 1e6, on("ilc_obs"), on("band_obs"), on("fit_obs")))
+            off = getattr(self, "_off_ref", None)
+            self.klog("A1", "DPD OFF: ACLR %.1f dBc (나쁜 쪽) · SG %.2f dBm · 샘플레이트 %.2f MSps"
+                      % (off[0], off[2], self.sig.fs / 1e6) if off else "DPD OFF")
+            self.klog("A2", "FSW 관측 대역 ±%.0f MHz (디지털 끝 ±%.0f) · ILC 관측 대역 안만=%s · 대역 제한 관측 대역 안=%s · DPD 학습 관측 대역 안만=%s"
+                      % (self.obs_f() / 1e6, self.sig.fs / 2e6, on("ilc_obs"), on("band_obs"), on("fit_obs")))
         except Exception:
             pass
+
+    def ilc_oob_log(self, u):
+        """JSH: ILC 정답 입력 u 의 FSW 관측 대역 밖 성분 (아래 · 위, 채널 전력 기준 dBc) - ilc_diag.py 없이 바로"""
+        try:
+            fs = self.sig.fs
+            fo = self.obs_f()
+            U = np.abs(np.fft.fft(np.asarray(u))) ** 2
+            f = np.fft.fftfreq(len(U), 1 / fs)
+            cars, bwm, adj, fmax, f1, f2 = self._bands()
+            pc = float(np.sum(U[np.abs(f) <= fmax])) or 1.0
+            lo = float(np.sum(U[f < -fo])); hi = float(np.sum(U[f > fo]))
+            db = lambda v: 10 * np.log10(max(v, 1e-30) / pc)
+            if fo >= 0.48 * fs - 1:
+                self.klog("B2", "ILC 입력 관측 대역 밖: 없음 (관측 대역 ≈ 디지털 끝)")
+            else:
+                self.klog("B2", "ILC 입력 관측 대역 밖 (±%.0f~%.0f MHz): 아래 %.1f dBc · 위 %.1f dBc  (−45 보다 크면 모델이 따라가기 어려움)"
+                          % (fo / 1e6, fs / 2e6, db(lo), db(hi)))
+        except Exception as e:
+            self.log("  (ILC 대역 밖 계산 실패: %s)" % e)
 
     def obs_f(self):
         """JSH: FSW 가 제대로 보는 대역 끝 (Hz, ±) = FSW I/Q 대역 / 2 (모르면 0.4 × 샘플레이트) · 디지털 끝 (fs/2) 안"""
@@ -2183,7 +2216,7 @@ class Engine:
                 pw = float(np.sum(Pr[msk])) * df
                 share[nm_] = pw / tot
                 parts.append("%s %.1f dBc (%.0f%%)" % (nm_, 10 * np.log10(max(pw, 1e-30) / pc), 100 * pw / tot))
-            self.log("  주파수별 학습 오차 (모델 출력 − ILC 입력, 채널 전력 기준 · 괄호 = 몫): " + " · ".join(parts))
+            self.klog("D2", "주파수별 학습 오차 (모델 출력 − ILC 입력, 채널 전력 기준 · 괄호 = 몫): " + " · ".join(parts))
             out_sh = share["그 바깥 (ACLR 로 안 보임)"]
             in_sh = share["채널 안"]
             if out_sh > 0.4:
@@ -2506,7 +2539,7 @@ class Engine:
                 gf = 10 * np.log10(pf_ / pc)
                 fz = " · 집중 구간 %.1f dBc" % gf
                 g = gf
-            self.log("  모델 출력 vs ILC 입력 차이 (계산): 인접 채널 %.1f dBc%s · 채널 안 %.1f dB  → 모델 ACLR 이 대략 이 근처에서 막힘%s"
+            self.klog("D1", "모델 출력 vs ILC 입력 차이 (계산): 인접 채널 %.1f dBc%s · 채널 안 %.1f dB  → 모델 ACLR 이 대략 이 근처에서 막힘%s"
                      % (10 * np.log10(max(pl, pu) / pc), fz, 10 * np.log10(ec / pc),
                         "  ⚠ 모델이 ILC 를 못 따라감 (K·M·L ↑ · 신경망)" if g > -45 else ""))
             self._ilcm_gapdb = g
@@ -2537,7 +2570,7 @@ class Engine:
             why = ("학습은 잘 됐는데 (%.1f dB) 측정에서 못 따라감 → 반복 사이 PA 상태 변화 (온도 · 메모리) · "
                    "이득 차이일 수 있음. 반복 횟수 늘리기 · Pout 딱 맞춤 확인 · [이어서 더]" % fit_db)
             kind = "모델 학습 OK · 측정에서 차이"
-        self.log("━━ 판정: ILC 최고 %.1f dBc · 모델 최고 %.1f dBc (ILC 보다 %+.1f dB) · 학습 오차 %.1f dB → %s"
+        self.klog("D3", "━━ 판정: ILC 최고 %.1f dBc · 모델 최고 %.1f dBc (ILC 보다 %+.1f dB) · 학습 오차 %.1f dB → %s"
                  % (ilc_best, mb, gap, fit_db, kind))
         self.log("   " + why)
         v = dict(ilc=ilc_best, model=mb, gap=gap, fit=fit_db, kind=kind, why=why)

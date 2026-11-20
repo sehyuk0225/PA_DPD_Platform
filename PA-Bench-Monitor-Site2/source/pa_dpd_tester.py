@@ -31,6 +31,7 @@ APP = "PA DPD Tester"
 
 SET_DIR = os.path.join(os.environ.get("APPDATA") or os.path.expanduser("~"), "PADPDTester")
 SET_FILE = os.path.join(SET_DIR, "settings.json")
+LOG_DIR = os.path.join(SET_DIR, "logs")                      # JSH: 로그 자동 저장 (실행마다 한 파일 · 최근 300 개)
 ILC_DIR = os.path.join(SET_DIR, "ilc")                       # ILC 결과 저장 (끝날 때마다 자동 · 최근 60 개)
 
 # PA Bench Monitor 와 같은 색 · 테마
@@ -2200,12 +2201,20 @@ class App:
             self._log_new = 0
             self.lbl_lognew.configure(text="")
         ttk.Button(lbar, text="⏬ 맨 아래 (최신)", command=_bottom).pack(side="left", padx=(8, 0))
+        def _logdir():
+            try:
+                os.makedirs(LOG_DIR, exist_ok=True)
+                os.startfile(LOG_DIR)
+            except Exception as e:
+                self.log("로그 폴더: %s (%s)" % (LOG_DIR, e))
+        ttk.Button(lbar, text="📂 로그 폴더", command=_logdir).pack(side="left", padx=(8, 0))      # JSH
         self.lbl_lognew = ttk.Label(lbar, text="", style="Info.TLabel")
         self.lbl_lognew.pack(side="left", padx=(8, 0))
         lw_ = ttk.Frame(lg)
         lw_.pack(fill="both", expand=True, pady=6)
         self.txt = tk.Text(lw_, font=("Consolas", 9), relief="flat", wrap="none", bd=0)
         self.reg(self.txt, bg="log_bg", fg="log_fg", insertbackground="log_fg")
+        self.txt.tag_configure("key", foreground="#ffd54f", background="#3e2723", font=("Consolas", 10, "bold"))   # JSH: 【코드】 줄
         sb_ = ttk.Scrollbar(lw_, orient="vertical", command=self.txt.yview)
         self.txt.configure(yscrollcommand=sb_.set)
         sb_.pack(side="right", fill="y")
@@ -3327,12 +3336,62 @@ class App:
             raise ValueError("K, M 은 1 이상 · 심볼 수는 2 이상")
         return p
 
-    def log(self, s):
+    KEY_NAMES = {"A1": "DPD OFF", "A2": "FSW 관측 대역 · JSH 스위치", "B1": "ILC 최고", "B2": "ILC 입력 관측 대역 밖",
+                 "C1": "DPD 최종", "C2": "되돌림 (마지막)", "C3": "DPD OFF 보다 나쁨", "D1": "모델 vs ILC 차이",
+                 "D2": "주파수별 학습 오차", "D3": "판정", "E1": "모델 파라미터 (마지막)", "F1": "최고값 제한 (마지막)"}
+
+    def log_file_new(self, kind):
+        """JSH: 실행마다 새 로그 파일 (설정 폴더 logs) · 【코드】 줄 모음 초기화"""
+        self._keys = {}
+        try:
+            os.makedirs(LOG_DIR, exist_ok=True)
+            self._log_path = os.path.join(LOG_DIR, "DPD_%s_%s.txt" % (time.strftime("%Y%m%d_%H%M%S"), kind))
+            fs = sorted((f for f in os.listdir(LOG_DIR) if f.lower().endswith(".txt")),
+                        key=lambda f: os.path.getmtime(os.path.join(LOG_DIR, f)))
+            for f in fs[:-300]:
+                os.remove(os.path.join(LOG_DIR, f))
+        except Exception:
+            self._log_path = None
+
+    def log_file_write(self, line):
+        pth = getattr(self, "_log_path", None)
+        if pth is None:                                    # 실행 전 로그 (연결 등) 도 파일로
+            try:
+                os.makedirs(LOG_DIR, exist_ok=True)
+                pth = self._log_path = os.path.join(LOG_DIR, "DPD_%s_시작.txt" % time.strftime("%Y%m%d_%H%M%S"))
+            except Exception:
+                self._log_path = False
+                return
+        if not pth:
+            return
+        try:
+            with open(pth, "a", encoding="utf-8-sig") as f_:
+                f_.write(line)
+        except Exception:
+            pass
+
+    def log_summary(self):
+        """JSH: 실행 끝 - 【코드】 줄만 모아 한 번 더 (Claude 에게 '코드 = 값' 으로 알려 주기 쉽게)"""
+        ks = getattr(self, "_keys", None)
+        if not ks:
+            return
+        self.log("■■■■■■■■ 요약 (【코드】 · 로그 파일: %s) ■■■■■■■■" % (getattr(self, "_log_path", None) or "-"))
+        for k_ in sorted(ks):
+            self.log("【%s】 %s ▸ %s" % (k_, self.KEY_NAMES.get(k_, ""), ks[k_]), summary=True)
+        self.log("■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■")
+
+    def log(self, s, summary=False):
+        s = str(s)
+        line = time.strftime("%H:%M:%S  ") + s + "\n"
+        self.log_file_write(line)
+        key_ = s.startswith("【") and "】" in s[:6]
+        if key_ and not summary:
+            self.__dict__.setdefault("_keys", {})[s[1:s.index("】")]] = s[s.index("】") + 1:].strip()
         try:
             at_end = (not self.txt.winfo_ismapped()) or self.txt.yview()[1] >= 0.999   # 로그 탭을 안 보고 있으면 늘 따라감
         except Exception:
             at_end = True
-        self.txt.insert("end", time.strftime("%H:%M:%S  ") + s + "\n")
+        self.txt.insert("end", line, ("key",) if (key_ or s.startswith("■■■")) else ())
         fol = self.v.get("log_follow")
         if (fol is None or fol.get()) and at_end:      # 위로 스크롤해 읽는 중이면 따라가지 않음
             self.txt.see("end")
@@ -3458,6 +3517,9 @@ class App:
             messagebox.showwarning(APP, str(e))
             return
         self.ilc_ctx()                                     # JSH: ILC 파일 이름용 샘플 종류 · 신호 파일 (화면 스레드에서 읽어 둠)
+        self.log_file_new("ILC" if ilc else "ILC모델" if from_ilc else "비교" if compare is not None else "이어서" if more else
+                          "DPD" if do_dpd else "OFF")      # JSH
+        self.log("로그 파일 (자동 저장): %s" % self._log_path)
         self.log("손실: In %.2f · Out %.2f dB%s%s" % (
             p["in_loss_db"], p["out_loss_db"],
             (" (%s)" % self.lbl_loss.cget("text").split("(")[-1].rstrip(")")) if self.v["bench_loss"].get() else " (칸 값)",
@@ -4545,6 +4607,7 @@ class App:
                     self.take_auto_kml()
                     self.st_last = (("✖ 실패 %s" if getattr(self, "_had_err", False) else "✔ 끝 %s") % time.strftime("%H:%M"),
                                     "#c62828" if getattr(self, "_had_err", False) else "#1565c0")
+                    self.log_summary()                       # JSH
                     self.save_run_data()
                     if getattr(self, "cmp_mode", False):
                         self.cmp_mode = False
