@@ -289,11 +289,25 @@ def fit_segs(n, n_fit, k=None, rng=None):
 
 class DPDModel:
     """메모리 다항식 (GMP 는 앞뒤 envelope 교차항 추가).
-    K = 비선형 차수 (홀수만 쓰기 옵션), M = 메모리 깊이, L = GMP 교차 지연 (0 = MP)"""
+    K = 비선형 차수 (홀수만 쓰기 옵션), M = 메모리 깊이, L = GMP 교차 지연 (0 = MP)
+    lag / lead = GMP Lagging 항 (|x(n-m-l)|, 지난 샘플) · Leading 항 (|x(n-m+l)|, 앞 샘플) 지연 수를 따로.
+                 None 이면 L 과 같음 (예전과 똑같은 항 · 순서)"""
 
-    def __init__(self, K=7, M=4, L=0, odd_only=False, lam=1e-6):
+    def __init__(self, K=7, M=4, L=0, odd_only=False, lam=1e-6, lag=None, lead=None):
         self.K, self.M, self.L, self.odd, self.lam = int(K), int(M), int(L), bool(odd_only), float(lam)
+        self.lag = self.L if lag is None else max(0, int(lag))
+        self.lead = self.L if lead is None else max(0, int(lead))
         self.w = None
+
+    def cross_lags(self):
+        """GMP 교차항 지연 l 목록: Lagging +1..+lag 다음 Leading -lead..-1 (lag = lead = L 이면 예전 순서 그대로)"""
+        return list(range(1, self.lag + 1)) + list(range(-self.lead, 0))
+
+    def lag_text(self):
+        """표시용: 'L1' (앞뒤 같음) 또는 'Lag2 Lead1' (따로)"""
+        if self.lag == self.lead == self.L:
+            return "L%d" % self.L
+        return "Lag%d Lead%d" % (self.lag, self.lead)
 
     def orders(self):
         return [k for k in range(1, self.K + 1) if (not self.odd or k % 2 == 1)]
@@ -307,10 +321,10 @@ class DPDModel:
             am = np.roll(a, m)
             for k in self.orders():
                 cols.append(um * am ** (k - 1))
-        if self.L > 0:                                  # GMP: x(n-m)|x(n-m-l)|^(k-1), l = ±1..L
+        if self.cross_lags():                           # GMP: x(n-m)|x(n-m-l)|^(k-1), l = +1..lag (Lagging) · -lead..-1 (Leading)
             for m in range(self.M):
                 um = np.roll(u, m)
-                for l in list(range(1, self.L + 1)) + list(range(-self.L, 0)):
+                for l in self.cross_lags():
                     al = np.roll(a, m + l)
                     for k in self.orders():
                         if k > 1:
@@ -323,9 +337,9 @@ class DPDModel:
         for m in range(self.M):
             for k in self.orders():
                 out.append("x(n-%d)|x(n-%d)|^%d" % (m, m, k - 1))
-        if self.L > 0:
+        if self.cross_lags():
             for m in range(self.M):
-                for l in list(range(1, self.L + 1)) + list(range(-self.L, 0)):
+                for l in self.cross_lags():
                     for k in self.orders():
                         if k > 1:
                             out.append("x(n-%d)|x(n-%d)|^%d" % (m, m + l, k - 1))
@@ -361,7 +375,7 @@ class DPDModel:
         return w, float(nmse)
 
     def pad(self):
-        return self.M + self.L + 1
+        return self.M + max(self.lag, self.lead) + 1
 
     def _basis_seg(self, u, s0, n):
         """주기 신호 u 의 [s0, s0+n) 구간 basis (앞쪽 지연 샘플은 주기로 이어 붙임)"""
@@ -387,8 +401,8 @@ class LinGMPModel(DPDModel):
     """GMP + 긴 선형 등화 (앞뒤 ±nlin 탭 FIR) - 넓은 대역 (400 MHz) 의 이득 리플 · 지연 (케이블 반사 · 필터) 을
     선형 항으로 따로 맞추고 비선형은 GMP 로. 계수는 한 번에 같이 학습 (ILA · 적용 모두 그대로)"""
 
-    def __init__(self, K=7, M=4, L=0, odd_only=False, lam=1e-6, nlin=64):
-        super().__init__(K, M, L, odd_only, lam)
+    def __init__(self, K=7, M=4, L=0, odd_only=False, lam=1e-6, nlin=64, lag=None, lead=None):
+        super().__init__(K, M, L, odd_only, lam, lag, lead)
         self.nlin = int(nlin)
 
     def lin_delays(self):
@@ -413,8 +427,8 @@ class TrapGMPModel(LinGMPModel):
     느린 평균 전력 s_τ(n) = |x|² 의 지수 평균 (시정수 τ = 0.1 · 1 · 10 µs 등, 주기 신호라 원형으로 정확히) 을 만들어
     x(n)·s_τ(n) · x(n)·|x(n)|·s_τ(n) 항을 더함 → 수 µs 전까지의 전력에 따라 바뀌는 이득 · 위상을 표현"""
 
-    def __init__(self, K=7, M=4, L=0, odd_only=False, lam=1e-6, nlin=0, fs=491.52e6, taus_us=(0.1, 1.0, 10.0)):
-        super().__init__(K, M, L, odd_only, lam, nlin)
+    def __init__(self, K=7, M=4, L=0, odd_only=False, lam=1e-6, nlin=0, fs=491.52e6, taus_us=(0.1, 1.0, 10.0), lag=None, lead=None):
+        super().__init__(K, M, L, odd_only, lam, nlin, lag, lead)
         self.fs = float(fs)
         self.taus_us = tuple(float(t) for t in taus_us)
         self._cache = None
@@ -465,8 +479,8 @@ class SegGMPModel(DPDModel):
     """구간 GMP (Doherty 용): 피크 앰프가 켜지는 레벨 t 를 기준으로 GMP 두 벌을 부드럽게 이어 붙임
     basis = [Φ·(1-s), Φ·s],  s = 1 / (1 + exp(-(|x| - t) / w)).  t 는 처음 학습 때 자동으로 찾음 (최고값의 30 ~ 70 %)"""
 
-    def __init__(self, K=7, M=4, L=1, odd_only=False, lam=1e-6):
-        super().__init__(K, M, L, odd_only, lam)
+    def __init__(self, K=7, M=4, L=1, odd_only=False, lam=1e-6, lag=None, lead=None):
+        super().__init__(K, M, L, odd_only, lam, lag, lead)
         self.t = None          # 경계 레벨 (|x| 절대값)
         self.amax = None
 
