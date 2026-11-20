@@ -27,7 +27,7 @@ DEFAULTS = dict(
     os=4, n_sym=28, mod="256QAM", cfr_on=True, papr_db=8.0,
     sig_src="nr", wv_path="", ch_bw_mhz=98.28, adj_mhz=100.0,
     rec=None, auto_cal=False,
-    ec_iters=6, ec_mu=0.5, ila_guard_db=1.0, retry_off=2,
+    ec_iters=6, ec_mu=0.5, ila_guard_db=1.0, retry_off=2, band_obs=True, ilc_obs=True, fit_obs=True,
     K=7, M=4, L=1, odd_only=False, lam=1e-6, iters=4, mu=0.7, peak_lim_db=3.0, n_fit=40000, fit_us=0.0, fit_segs=1, target_aclr=None,
 )
 
@@ -196,6 +196,7 @@ class Engine:
         self.G = None
         self._plan = None
         self._wlog = False
+        self._obslog = self._ilcobslog = False        # JSH
         self._plog = False
         self._pk_note = False
         self._acp_warn = False
@@ -497,6 +498,7 @@ class Engine:
         rbw = float(p.get("fsw_rbw_khz") or 0) * 1e3 or None
         K = max(1, int(p.get("cap_up") or 1))          # FSW 만 K 배 빠르게 받음 (SMW 는 신호 샘플레이트 그대로) → I/Q 대역 넓게
         bw = self.fsw.setup(p["freq_ghz"] * 1e9, sig.fs * K, ref if ref == ref else 10.0, att, rbw)
+        self._fsw_bw = bw                              # JSH: FSW I/Q 대역 (관측 대역 = ±bw/2)
         if ref_auto and ref != ref:
             # 처음 (이 실행 · 이 레벨에서 아직 모름): FSW 자동 레벨로 Ref Level · 감쇠를 신호에 맞춤 → ADC 를 꽉 채워 잡음 바닥 ↓
             al_ = self.fsw.auto_level()
@@ -1355,11 +1357,13 @@ class Engine:
             elif meth == "dla" and w is not None:
                 # 직접 학습: PA 출력 오차 (원래 신호 - 출력/G) 를 원래 신호 basis 로 맞춰 계수에 더함
                 e = self.focus_weight(x - y_al / self.G)
-                dw, _ = self.model.fit(x, e, n_fit=self.p["n_fit"])
+                r_o = self.fit_obs(x, e)                      # JSH: 관측 대역 안만
+                dw = r_o[0] if r_o is not None else self.model.fit(x, e, n_fit=self.p["n_fit"])[0]
                 w = w + mu * dw
                 nmse = 10 * np.log10(np.mean(np.abs(e) ** 2) / np.mean(np.abs(x) ** 2))
             else:
-                wn, nmse = self.model.fit(y_al / self.G, pd, n_fit=self.p["n_fit"])
+                r_o = self.fit_obs(y_al / self.G, pd)         # JSH: 관측 대역 안만 (ILA 포스트디스토터)
+                wn, nmse = r_o if r_o is not None else self.model.fit(y_al / self.G, pd, n_fit=self.p["n_fit"])
                 w = wn if w is None else (1 - mu) * w + mu * wn
             self.model.w = w
             pd, n_clip = self.dpd_signal(w)
@@ -1464,7 +1468,8 @@ class Engine:
             self.check()
             yb = best[4] / self.G
             dpd_in, e = self._ec_step(x, best[2], yb)
-            dw, _ = self.model.fit(x, self.focus_weight(dpd_in), n_fit=p["n_fit"])
+            r_o = self.fit_obs(x, self.focus_weight(dpd_in))     # JSH: 관측 대역 안만
+            dw = r_o[0] if r_o is not None else self.model.fit(x, self.focus_weight(dpd_in), n_fit=p["n_fit"])[0]
             nmse = 10 * np.log10(np.mean(np.abs(e) ** 2) / np.mean(np.abs(x) ** 2))
             w_new = best[1] + mu * dw
             self.model.w = w_new
@@ -1548,6 +1553,7 @@ class Engine:
         """DPD OFF 측정 → (do_dpd) DPD 반복. 결과 목록 반환"""
         self._soft = False
         self._wlog = False
+        self._obslog = self._ilcobslog = False        # JSH
         self._plog = False
         self._pk_note = False
         self._acp_warn = False
@@ -1590,6 +1596,7 @@ class Engine:
         methods = [(model, learn), ...]  예: [("gmp","ila"), ("gmp","dla"), ("dvr","ila"), ("nn","ila")]"""
         self._soft = False
         self._wlog = False
+        self._obslog = self._ilcobslog = False        # JSH
         self._plog = False
         self._pk_note = False
         self._acp_warn = False
@@ -1700,6 +1707,7 @@ class Engine:
         if p.get("ilc_time") and self.w_mode() != "time":
             p["w_mode"] = "time"
             self._wlog = False
+            self._obslog = self._ilcobslog = False        # JSH
             self.log("  ILC 보정 기준: 시간 영역 (모델 학습용 정답 · 모델 다듬기는 보정 기준 '%s' 대로)" % wm0)
         self._ilc_wm = self.w_mode()
         self._ilc_live = None
@@ -1721,6 +1729,7 @@ class Engine:
             if p.get("w_mode") != wm0:
                 p["w_mode"] = wm0
                 self._wlog = False
+                self._obslog = self._ilcobslog = False        # JSH
 
     def _ilc_done(self, partial):
         """JSH: ILC 결과가 생기면 (한계 ACLR · ILC→모델 · 방식 비교 · 이어서 · 중지) 화면 쪽 (on_ilc) 에 알림 → .npz 저장"""
@@ -1749,6 +1758,11 @@ class Engine:
             self.check()
             self.log("▶ %sILC %d / %d (한계 ACLR 찾기 · 이득 %.2f)" % (label_pre, k, k0 + n, gk))
             e = x - y_al / self.G
+            if p.get("ilc_obs", True):                 # JSH: FSW 가 못 보는 대역은 고치지 않음 (거기 쌓이면 모델이 못 배움)
+                if not getattr(self, "_ilcobslog", False):
+                    self._ilcobslog = True
+                    self.log("  ILC 는 FSW 관측 대역 ±%.0f MHz 안만 고침 (밖은 그대로 · 5 카드에서 끌 수 있음)" % (self.obs_f() / 1e6))
+                e = self.obs_mask(e)
             u = u + gk * self.focus_weight(e)
             a = np.abs(u)
             n_clip = int(np.sum(a > lim))
@@ -1790,6 +1804,7 @@ class Engine:
         """ILC 로 한계 ACLR: levels 없으면 지금 SG 레벨 한 번, 있으면 레벨마다 (DPD OFF → ILC)"""
         self._soft = False
         self._wlog = False
+        self._obslog = self._ilcobslog = False        # JSH
         self._plog = False
         self._pk_note = False
         self._acp_warn = False
@@ -1909,7 +1924,7 @@ class Engine:
     def run_ilc_model(self):
         """ILC 결과로 모델: 마지막 ILC 의 가장 좋았던 입력 u 를 정답으로 지금 모델 (GMP 등) 이 x → u 를 배움
         → 측정 → (반복 횟수 − 1) 번 ILA 등으로 다듬음. ILC 는 다시 안 돌림"""
-        for a_ in ("_wlog", "_plog", "_pk_note", "_acp_warn", "_bwlog", "_calm_warn"):
+        for a_ in ("_wlog", "_plog", "_pk_note", "_acp_warn", "_bwlog", "_calm_warn", "_obslog", "_ilcobslog"):
             setattr(self, a_, False)
         st = getattr(self, "_resume", None)
         if not st or st.get("kind") != "ilc":
@@ -2093,7 +2108,48 @@ class Engine:
         """주파수 구간 (Hz, 신호 가운데 0 기준): 채널 안 · 인접 · 그다음 · 그 바깥 (보이는 끝까지)"""
         cars, bwm, adj = self.aclr_plan()
         fmax = max(abs(fc) + w_ / 2 for fc, w_ in cars)
-        return cars, bwm, adj, fmax, fmax + adj, fmax + 2 * adj
+        f1, f2 = fmax + adj, fmax + 2 * adj
+        if self.p.get("band_obs", True):
+            # JSH: 인접 · 그다음 끝을 FSW 가 실제로 보는 대역 안으로 (400 MHz · 983 MSps 면 그다음 끝 600 MHz > 디지털 끝 491 MHz
+            #      → 원래는 '대역 제한 학습' 이 아무것도 안 거름 · '그 바깥' 오차가 늘 0 %)
+            fo = self.obs_f()
+            f1, f2 = min(f1, fo), min(f2, fo)
+        return cars, bwm, adj, fmax, f1, f2
+
+    def obs_f(self):
+        """JSH: FSW 가 제대로 보는 대역 끝 (Hz, ±) = FSW I/Q 대역 / 2 (모르면 0.4 × 샘플레이트) · 디지털 끝 (fs/2) 안"""
+        fs = self.sig.fs if self.sig is not None else 491.52e6
+        bw = getattr(self, "_fsw_bw", float("nan"))
+        fo = 0.5 * bw if (isinstance(bw, (int, float)) and bw == bw and bw > 0) else 0.4 * fs
+        return float(min(fo, 0.48 * fs))
+
+    def obs_mask(self, e):
+        """JSH: 관측 대역 (±obs_f) 밖 성분을 뺌 (끝에서 2 % 폭만큼 부드럽게) - FSW 가 못 보는 곳은 고치지 않음"""
+        fs = self.sig.fs
+        fo = self.obs_f()
+        if fo >= 0.48 * fs - 1:
+            return e
+        fr = np.abs(np.fft.fftfreq(len(e), 1.0 / fs))
+        tw = 0.02 * fs
+        W = np.clip((fo - fr) / tw + 0.5, 0.0, 1.0)
+        W = 0.5 - 0.5 * np.cos(np.pi * W)
+        return np.fft.ifft(np.fft.fft(e) * W)
+
+    def fit_obs(self, xin, d):
+        """JSH: 관측 대역 안만 맞추는 학습 (basis(xin) · w ≈ d, ±obs_f 밖은 가중 1e-3) → (w, 오차 dB) · 못 하면 None"""
+        if not self.p.get("fit_obs", True) or is_nn(self.p) or not hasattr(self.model, "_basis_seg"):
+            return None
+        fs = self.sig.fs
+        fo = self.obs_f()
+        if fo >= 0.48 * fs - 1:
+            return None
+        if not getattr(self, "_obslog", False):
+            self._obslog = True
+            self.log("  학습은 FSW 관측 대역 ±%.0f MHz 안만 (밖은 FSW 가 못 봄 → 맞추지 않음 · 5 카드에서 끌 수 있음)" % (fo / 1e6))
+        r_ = self._fit_mask(self.model, xin, d, lambda fr: np.where(np.abs(fr) <= fo, 1.0, 1e-3))
+        if r_ is None:
+            return None
+        return r_[0], r_[1]
 
     def _ilcm_band(self, x, u, w, nm):
         """(A) 주파수별 학습 오차: 모델 출력 − ILC 입력 차이가 채널 안 · 인접 · 그다음 · 그 바깥 중 어디에 몰렸는지
@@ -2486,6 +2542,7 @@ class Engine:
     def run_more(self, n):
         """끝난 (또는 중지한) DPD · ILC 를 그 결과에서 이어서 n 번 더 (같은 SG 레벨 · 같은 계수 / 입력)"""
         self._wlog = False
+        self._obslog = self._ilcobslog = False        # JSH
         self._plog = False
         self._pk_note = False
         self._acp_warn = False
