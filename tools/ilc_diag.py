@@ -40,9 +40,12 @@ def arg_val(argv, key, default=None):
 
 
 # ------------------------------------------------------------------ 기저 (GMP + 켤레)
-def terms(K, M, L, conj=False, odd=False):
+def terms(K, M, L, conj=False, odd=False, mneg=0, fir=0):
+    """mneg: 앞 샘플 (x(n+1) …) 메모리 수 · fir: 선형 x(n-d) 를 ±fir 탭까지 (메모리 밖만)"""
     ks = [k for k in range(1, K + 1) if (k % 2 == 1 or not odd)]
-    t = [("mp", k, m, 0) for k in ks for m in range(M)]
+    ms = list(range(-mneg, M))
+    t = [("mp", k, m, 0) for k in ks for m in ms]
+    t += [("mp", 1, d, 0) for d in range(-fir, fir + 1) if d not in ms]
     for m in range(M):
         for l in list(range(1, L + 1)) + list(range(-L, 0)):
             t += [("x", k, m, l) for k in ks if k > 1]
@@ -116,6 +119,15 @@ def main():
     # 같은 크기로 (u 는 x 와 같은 스케일이어야)
     g = np.vdot(x, u) / np.vdot(x, x)
     print("u / x 평균 이득: %.2f dB · %.1f°" % (20 * np.log10(abs(g)), np.degrees(np.angle(g))))
+    # x 와 u 의 시간 어긋남 (교차 상관 최고점 · 소수점 지연)
+    cc = np.fft.ifft(np.fft.fft(u) * np.conj(np.fft.fft(x)))
+    k0 = int(np.argmax(np.abs(cc)))
+    k0s = k0 if k0 < len(cc) // 2 else k0 - len(cc)
+    c_m, c_0, c_p = np.abs(cc[(k0 - 1) % len(cc)]), np.abs(cc[k0]), np.abs(cc[(k0 + 1) % len(cc)])
+    frac = 0.5 * (c_m - c_p) / (c_m - 2 * c_0 + c_p) if (c_m - 2 * c_0 + c_p) != 0 else 0.0
+    dly = k0s + frac
+    print("x → u 시간 어긋남: %+.3f 샘플 (%+.3f ns) %s" % (dly, dly / fs * 1e9,
+          "← u 가 x 보다 앞섬 (지금 모델은 앞 샘플 못 씀)" if dly < -0.02 else ("← u 가 x 보다 늦음" if dly > 0.02 else "(거의 없음)")))
 
     # 대역 정하기: x 점유 대역 → 인접 채널
     f, Px = psd(x, fs)
@@ -143,6 +155,8 @@ def main():
         ("GMP K5 M4 L1 (지금과 비슷)", terms(5, 4, 1)),
         ("GMP K7 M4 L1", terms(7, 4, 1)),
         ("GMP K5 M12 L2 (긴 메모리)", terms(5, 12, 2)),
+        ("GMP K5 M4 L1 + 앞 샘플 3 (m −3~3)", terms(5, 4, 1, mneg=3)),
+        ("GMP K5 M4 L1 + 선형 FIR ±32 탭", terms(5, 4, 1, fir=32)),
         ("GMP K5 M4 L1 + 켤레 항 (I/Q 불균형)", terms(5, 4, 1, conj=True)),
         ("GMP K5 M12 L2 + 켤레 항", terms(5, 12, 2, conj=True)),
     ]
