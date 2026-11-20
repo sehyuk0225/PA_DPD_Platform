@@ -262,27 +262,38 @@ def small_signal_gain(x, y_al, frac=0.3):
 
 
 # ---------------------------------------------------------------- DPD (MP / GMP)
+FIT_SEGS = 1          # 학습 조각 수 (기본 1 = 예전처럼 한 구간): n_fit 샘플을 신호 전체에 고르게 이 개수로 나눠 뽑음 (1 = 한 구간)
+
+
+def fit_segs(n, n_fit, k=None, rng=None):
+    """학습 구간 [(시작, 길이)]: 신호 전체 (길이 n) 에 같은 간격으로 k 조각 · 합 n_fit. 늘 같은 자리 (고정 · 재현 가능)
+    k = 1 이면 예전 프로그램과 똑같은 한 구간 (시드 고정 시작점)"""
+    n_fit = min(int(n_fit or n), n)
+    k = max(1, int(FIT_SEGS if k is None else k))
+    if n_fit >= n:
+        return [(0, n)]
+    if k == 1:
+        rng = rng or np.random.default_rng(0)
+        return [(int(rng.integers(0, n - n_fit + 1)), n_fit)]
+    k = min(k, max(1, n_fit // 2000))                # 조각이 너무 짧으면 (2000 샘플 미만) 개수를 줄임
+    ln = n_fit // k
+    step = n / k
+    out = []
+    for i in range(k):
+        L_ = ln + (n_fit - ln * k if i == k - 1 else 0)
+        s0 = int(i * step + (step - L_) / 2) if step > L_ else int(i * step)
+        out.append((s0 % n, L_))
+    return out
+
+
+
 class DPDModel:
     """메모리 다항식 (GMP 는 앞뒤 envelope 교차항 추가).
-    K = 비선형 차수 (홀수만 쓰기 옵션), M = 메모리 깊이, L = GMP 교차 지연 (0 = MP)
-    lag / lead = GMP Lagging 항 (|x(n-m-l)|, 지난 샘플) · Leading 항 (|x(n-m+l)|, 앞 샘플) 지연 수를 따로.
-                 None 이면 L 과 같음 (예전과 똑같은 항 · 순서)"""
+    K = 비선형 차수 (홀수만 쓰기 옵션), M = 메모리 깊이, L = GMP 교차 지연 (0 = MP)"""
 
-    def __init__(self, K=7, M=4, L=0, odd_only=False, lam=1e-6, lag=None, lead=None):
+    def __init__(self, K=7, M=4, L=0, odd_only=False, lam=1e-6):
         self.K, self.M, self.L, self.odd, self.lam = int(K), int(M), int(L), bool(odd_only), float(lam)
-        self.lag = self.L if lag is None else max(0, int(lag))
-        self.lead = self.L if lead is None else max(0, int(lead))
         self.w = None
-
-    def cross_lags(self):
-        """GMP 교차항 지연 l 목록: Lagging +1..+lag 다음 Leading -lead..-1 (lag = lead = L 이면 예전 순서 그대로)"""
-        return list(range(1, self.lag + 1)) + list(range(-self.lead, 0))
-
-    def lag_text(self):
-        """표시용: 'L1' (앞뒤 같음) 또는 'Lag2 Lead1' (따로)"""
-        if self.lag == self.lead == self.L:
-            return "L%d" % self.L
-        return "Lag%d Lead%d" % (self.lag, self.lead)
 
     def orders(self):
         return [k for k in range(1, self.K + 1) if (not self.odd or k % 2 == 1)]
@@ -296,10 +307,10 @@ class DPDModel:
             am = np.roll(a, m)
             for k in self.orders():
                 cols.append(um * am ** (k - 1))
-        if self.cross_lags():                           # GMP: x(n-m)|x(n-m-l)|^(k-1), l = +1..lag (Lagging) · -lead..-1 (Leading)
+        if self.L > 0:                                  # GMP: x(n-m)|x(n-m-l)|^(k-1), l = ±1..L
             for m in range(self.M):
                 um = np.roll(u, m)
-                for l in self.cross_lags():
+                for l in list(range(1, self.L + 1)) + list(range(-self.L, 0)):
                     al = np.roll(a, m + l)
                     for k in self.orders():
                         if k > 1:
@@ -312,9 +323,9 @@ class DPDModel:
         for m in range(self.M):
             for k in self.orders():
                 out.append("x(n-%d)|x(n-%d)|^%d" % (m, m, k - 1))
-        if self.cross_lags():
+        if self.L > 0:
             for m in range(self.M):
-                for l in self.cross_lags():
+                for l in list(range(1, self.L + 1)) + list(range(-self.L, 0)):
                     for k in self.orders():
                         if k > 1:
                             out.append("x(n-%d)|x(n-%d)|^%d" % (m, m + l, k - 1))
@@ -333,10 +344,10 @@ class DPDModel:
         """postdistorter 학습: basis(u) · w ≈ d (정규화 최소제곱). n_fit 샘플만 사용"""
         n = len(u)
         n_fit = min(int(n_fit or n), n)
-        rng = rng or np.random.default_rng(0)
-        s0 = int(rng.integers(0, n - n_fit + 1))
-        Phi = self._basis_seg(u, s0, n_fit)              # 필요한 구간만 (메모리 절약)
-        d = d[s0:s0 + n_fit]
+        segs = fit_segs(n, n_fit, rng=rng)               # 신호 전체에 고르게 여러 조각 (늘 같은 자리)
+        Phi = np.concatenate([self._basis_seg(u, s0, L_) for s0, L_ in segs], axis=0)
+        d = np.concatenate([d[np.arange(s0, s0 + L_) % n] for s0, L_ in segs])
+        n_fit = len(d)
         idx = np.arange(n_fit)
         sc = np.sqrt(np.mean(np.abs(Phi) ** 2, axis=0))      # 열마다 크기를 맞춤 (|u|^k 차수별 크기 차이로 계산이 불안정해지지 않게)
         sc[sc == 0] = 1.0
@@ -350,7 +361,7 @@ class DPDModel:
         return w, float(nmse)
 
     def pad(self):
-        return self.M + max(self.lag, self.lead) + 1
+        return self.M + self.L + 1
 
     def _basis_seg(self, u, s0, n):
         """주기 신호 u 의 [s0, s0+n) 구간 basis (앞쪽 지연 샘플은 주기로 이어 붙임)"""
@@ -376,8 +387,8 @@ class LinGMPModel(DPDModel):
     """GMP + 긴 선형 등화 (앞뒤 ±nlin 탭 FIR) - 넓은 대역 (400 MHz) 의 이득 리플 · 지연 (케이블 반사 · 필터) 을
     선형 항으로 따로 맞추고 비선형은 GMP 로. 계수는 한 번에 같이 학습 (ILA · 적용 모두 그대로)"""
 
-    def __init__(self, K=7, M=4, L=0, odd_only=False, lam=1e-6, nlin=64, lag=None, lead=None):
-        super().__init__(K, M, L, odd_only, lam, lag, lead)
+    def __init__(self, K=7, M=4, L=0, odd_only=False, lam=1e-6, nlin=64):
+        super().__init__(K, M, L, odd_only, lam)
         self.nlin = int(nlin)
 
     def lin_delays(self):
@@ -402,8 +413,8 @@ class TrapGMPModel(LinGMPModel):
     느린 평균 전력 s_τ(n) = |x|² 의 지수 평균 (시정수 τ = 0.1 · 1 · 10 µs 등, 주기 신호라 원형으로 정확히) 을 만들어
     x(n)·s_τ(n) · x(n)·|x(n)|·s_τ(n) 항을 더함 → 수 µs 전까지의 전력에 따라 바뀌는 이득 · 위상을 표현"""
 
-    def __init__(self, K=7, M=4, L=0, odd_only=False, lam=1e-6, nlin=0, fs=491.52e6, taus_us=(0.1, 1.0, 10.0), lag=None, lead=None):
-        super().__init__(K, M, L, odd_only, lam, nlin, lag, lead)
+    def __init__(self, K=7, M=4, L=0, odd_only=False, lam=1e-6, nlin=0, fs=491.52e6, taus_us=(0.1, 1.0, 10.0)):
+        super().__init__(K, M, L, odd_only, lam, nlin)
         self.fs = float(fs)
         self.taus_us = tuple(float(t) for t in taus_us)
         self._cache = None
@@ -454,8 +465,8 @@ class SegGMPModel(DPDModel):
     """구간 GMP (Doherty 용): 피크 앰프가 켜지는 레벨 t 를 기준으로 GMP 두 벌을 부드럽게 이어 붙임
     basis = [Φ·(1-s), Φ·s],  s = 1 / (1 + exp(-(|x| - t) / w)).  t 는 처음 학습 때 자동으로 찾음 (최고값의 30 ~ 70 %)"""
 
-    def __init__(self, K=7, M=4, L=1, odd_only=False, lam=1e-6, lag=None, lead=None):
-        super().__init__(K, M, L, odd_only, lam, lag, lead)
+    def __init__(self, K=7, M=4, L=1, odd_only=False, lam=1e-6):
+        super().__init__(K, M, L, odd_only, lam)
         self.t = None          # 경계 레벨 (|x| 절대값)
         self.amax = None
 
@@ -605,9 +616,14 @@ class NNModel:
         n = len(u)
         n_fit = min(int(n_fit or n), n)
         rng = rng or np.random.default_rng(self.seed)
-        s0 = int(rng.integers(0, n - n_fit + 1))
-        F, uu = self._feat(u, s0, n_fit)
-        t = (d[s0:s0 + n_fit] - uu) * self._rot      # 바로 통과 (u) 와의 차이만 배움 (위상 정규화면 돌린 좌표에서)
+        Fs, Us, Rs, Ds = [], [], [], []
+        for s0, L_ in fit_segs(n, n_fit, rng=rng):                 # 신호 전체에 고르게 여러 조각 (늘 같은 자리)
+            F_, uu_ = self._feat(u, s0, L_)
+            Fs.append(F_); Us.append(uu_); Rs.append(self._rot); Ds.append(d[np.arange(s0, s0 + L_) % n])
+        F, uu, dd = np.concatenate(Fs), np.concatenate(Us), np.concatenate(Ds)
+        self._rot = np.concatenate(Rs)
+        n_fit = len(dd)
+        t = (dd - uu) * self._rot      # 바로 통과 (u) 와의 차이만 배움 (위상 정규화면 돌린 좌표에서)
         T = np.stack([t.real, t.imag], 1)
         w = {k: v.copy() for k, v in (init or self._init(rng)).items()}
         mo = {k: np.zeros_like(v) for k, v in w.items()}
@@ -636,8 +652,8 @@ class NNModel:
                     ve[k] = b2 * ve[k] + (1 - b2) * gr[k] ** 2
                     w[k] -= lr * (mo[k] / (1 - b1 ** step)) / (np.sqrt(ve[k] / (1 - b2 ** step)) + eps)
         o = self._fwd(w, F)[2]
-        r = (o[:, 0] + 1j * o[:, 1]) * np.conj(self._rot) + uu - d[s0:s0 + n_fit]
-        nmse = 10 * np.log10(np.mean(np.abs(r) ** 2) / np.mean(np.abs(d[s0:s0 + n_fit]) ** 2))
+        r = (o[:, 0] + 1j * o[:, 1]) * np.conj(self._rot) + uu - dd
+        nmse = 10 * np.log10(np.mean(np.abs(r) ** 2) / np.mean(np.abs(dd) ** 2))
         return w, float(nmse)
 
     def apply(self, x, w=None, chunk=65536):
@@ -689,6 +705,41 @@ def model_search(u, d, odd_only=False, lam=1e-6, n_fit=30000, Ks=(5, 7, 9), Ms=(
     out.sort()
     return out
 
+
+
+def dvr_search(u, d, lam=1e-6, n_fit=30000, segs=(4, 6, 8, 10, 12), Ms=(2, 3, 4, 6), cancelled=None):
+    """DVR 모델 (구간 수 · M) 자동 찾기 - 계산만으로 (model_search 와 같은 방식: 한 구간 학습 · 다른 구간 검증)
+    → [(검증 NMSE, 계수 수, 구간 수, M, 0)] 좋은 순 (pick_models 에 그대로)"""
+    n = len(u)
+    rng = np.random.default_rng(1)
+    n_fit = min(n_fit, n // 3)
+    amax = float(np.percentile(np.abs(u), 99.99))
+    out = []
+    for ns in segs:
+        for M in Ms:
+            if cancelled and cancelled():
+                return out
+            m = DVRModel(ns, M, lam)
+            m.amax = amax
+            s_fit = int(rng.integers(0, n // 2 - n_fit))
+            s_val = n // 2 + int(rng.integers(0, n // 2 - n_fit))
+            Phi = m._basis_seg(u, s_fit, n_fit)
+            sc = np.sqrt(np.mean(np.abs(Phi) ** 2, axis=0))
+            sc[sc == 0] = 1.0
+            P = Phi / sc
+            A = P.conj().T @ P
+            b = P.conj().T @ d[s_fit:s_fit + n_fit]
+            lm = lam * np.trace(A).real / A.shape[0]
+            try:
+                w = np.linalg.solve(A + lm * np.eye(A.shape[0]), b) / sc
+            except np.linalg.LinAlgError:
+                continue
+            dv = d[s_val:s_val + n_fit]
+            r = dv - m._basis_seg(u, s_val, n_fit) @ w
+            nm = 10 * np.log10(np.mean(np.abs(r) ** 2) / np.mean(np.abs(dv) ** 2))
+            out.append((float(nm), Phi.shape[1], int(ns), int(M), 0))
+    out.sort()
+    return out
 
 def pick_models(res, n=3, tol=0.3):
     """검증 NMSE 가 가장 좋은 것과 tol dB 안이면 계수가 적은 쪽을 먼저 → 서로 다른 후보 n 개"""

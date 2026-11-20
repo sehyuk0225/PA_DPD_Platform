@@ -28,6 +28,12 @@ from tkinter import ttk, messagebox, filedialog
 
 import rto_current_meter as rto
 import psu_panel
+try:  # 장비 연결이 끊기면 자동으로 다시 연결 (psu_panel 은 그대로 · 장비 여는 곳만 감쌈)
+    import visa_reconnect
+    visa_reconnect.install()
+except Exception as _e:
+    visa_reconnect = None
+    print("visa_reconnect:", _e)
 try:  # RF PA Analyzer 그래프 창 연동 (연동판에만 포함 · 단독판은 이 파일이 없음)
     from analyzer_link import AnalyzerLink
     HAS_ANALYZER = True
@@ -51,7 +57,7 @@ except ImportError:
             pass
 
 APP_NAME = "PA Bench Monitor"
-VERSION = "v2.5.121"
+VERSION = "v2.5.127"
 
 BG = "#0b0f14"
 FG_DIM = "#7d8a99"
@@ -8496,6 +8502,19 @@ def _bench_init_ext(self, *a, **k):
             pass
     try:
         self.root.report_callback_exception = _cb_err
+    except Exception:
+        pass
+    try:                                                 # 장비 자동 다시 연결 → 파워서플라이 로그 · 맨 아래 상태 줄
+        if visa_reconnect is not None:
+            pp_ = self.psu_panel
+
+            def _rlog(m, t="err", pp_=pp_, self_=self):
+                pp_.post("log", m, t)
+                try:
+                    self_.root.after(0, lambda: self_.status(m) if hasattr(self_, "status") else None)
+                except Exception:
+                    pass
+            visa_reconnect.LOG = _rlog
     except Exception:
         pass
     try:                                                 # 외부 전원 (드라이버 앰프 · PK 게이트, GPIB) - Site2 판에서는 안 붙음

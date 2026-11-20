@@ -34,7 +34,7 @@ PK_OUT = "P6V"          # 피킹 게이트에 쓸 E3631A (2) 출력: P6V (기본
 EACH_MAX = 24.0          # 직렬 Vdd: 한 대 기본 최대 (Site2 = 24 V + 24 V = 48 V)
 VSUM = 50.0             # 직렬 Vdd 합 상한 (화면에서 바꿈 · 기본 50 V)
 VMAX = [24.5, 24.0]     # 직렬 Vdd: 앞 · 뒤 장비 각각 최대 (파워서플라이 화면 'Site2 Vdd 2 대' 에서 바꿈 · 예: 뒤 장비 24.5 = IR 드롭 보상)
-SITE_VER = "v1.4.36.1_JSH"
+SITE_VER = "v1.4.42"
 
 
 def _f(s):
@@ -477,6 +477,11 @@ def install():
     import psu_panel as P
     if getattr(P.Visa, "_site2", False):
         return
+    try:                                   # 장비 한 대씩 '끊기면 자동 다시 연결' 로 감쌈 (2 대를 1 대로 묶기 전에)
+        import visa_reconnect
+        visa_reconnect.install()
+    except Exception as e:
+        print("visa_reconnect:", e)
     orig_open = P.Visa.open
 
     def one(self, a, kind, timeout_ms):

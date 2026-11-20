@@ -26,7 +26,7 @@ except Exception as _e:                     # numpy 가 없는 등
     E = None
     _IMPORT_ERR = _e
 
-VERSION = "v0.2.3.101"
+VERSION = "v0.2.3.107"
 APP = "PA DPD Tester"
 
 SET_DIR = os.path.join(os.environ.get("APPDATA") or os.path.expanduser("~"), "PADPDTester")
@@ -638,7 +638,7 @@ TIPS = {
     "iq_avg": "I/Q 평균 주기\n신호 몇 주기를 시간까지 맞춰 평균할지 (2 기본). 2 배마다 잡음 3 dB ↓ (8 = -6 dB · 32 = -12 dB).\n한 번에 약 400만 샘플까지 받고, 넘으면 여러 번 받아 평균 (그만큼 느려짐).\n많을수록 DLA · ILC 가 더 내려감.",
     "aclr_src": "ACLR 읽기 (학습은 셋 다 I/Q)\nMod. OFF·최종 (권장): DPD OFF 와 레벨마다 마지막 결과만 FSW Mod. 화면 (스펙트럼, 잡음 낮음) 으로 → 반복 중엔 FSW 화면 고정, 남는 숫자는 진짜 ACLR.\nMod. 매번: 측정마다 Mod. 화면으로 (화면이 왔다 갔다).\nI/Q: 받은 I/Q 로 계산 (빠름, I/Q 잡음 바닥에서 막혀 보일 수 있음).",
     "bench_loss": "Bench 손실 표 사용\n켜 두면 주파수별 입력 · 출력 손실을 Bench 설정에서 그대로 가져옴.",
-    "b_stype": "샘플 종류\nBench 의 샘플 종류. 바꾸면 그 샘플에서 쓰던 1 ~ 5 카드 설정으로 자동 전환.",
+    "b_stype": "샘플 종류\nBench 의 샘플 종류. 바꾸면 그 샘플에서 쓰던 1 ~ 6 카드 설정으로 자동 전환.",
     "b_rec": "기록\nSG → Pout 계산에 쓸 .pam 기록. 지금 샘플 번호 (★) 의 Mod. 기록이 지금 주파수에 있으면 자동으로 고르고,\n없으면 '선택 안 함' (기록 Pout · 기록에 맞춘 Pout 보정 안 씀). 다른 샘플 · 조건 기록은 고르지 마세요 - Pout 이 안 맞음.",
     "b_target": "목표 Pout\n원하는 DUT 출력 (dBm). [SG 레벨 정하기] 를 누르면 기록에서 SG 레벨을 계산해 2 카드에 넣음.",
     "pout_lock_on": "목표 Pout 에 SG 맞추고 고정\n[실행] 때 먼저 DPD OFF 신호를 보내며 실제 Pout 을 재서 SG 를 맞춤 (보통 2 ~ 4 번, ±0.1 dB)\n→ 그 SG 를 2 카드에 넣고 고정한 채 DPD OFF · DPD 시작. 한 레벨 · ILC · 방식 비교에서 (파워 스윕은 아님).\nDPD · ILC 반복 중에도 Pout 이 목표에서 벗어나면 목표 이득을 조금씩 고쳐 목표 Pout 을 유지 (로그 'Pout 유지').\n압축 구간이면 잰 기울기로 더 크게 움직임 · SG 최대에서 멈춤.",
@@ -651,29 +651,25 @@ TIPS = {
     "pout_tol": "Pout 허용 오차 (dB) · 기본 0.05\n실행 처음 '목표 Pout 에 SG 맞추기' 와 반복마다 '맞춤' 둘 다 이 값 (예전엔 처음 맞추기가 늘 0.1 dB 였음).\n목표 가까이 오면 두 번 재서 평균 · 맞을 때까지 최대 6 번 고침. 측정이 흔들리면 2 카드 '읽기 전 기다림' 을 늘리세요.",
     "settle_s": "읽기 전 기다림 (초) · 기본 0.5\nSG 에 신호 · 레벨을 올린 뒤 FSW 로 읽기 전에 기다리는 시간. PA 출력 · 전류가 자리 잡게.\n너무 빨리 읽어 Pout · ACLR 이 흔들리면 늘리세요 (1 ~ 2 초). 측정마다 이만큼 더 걸림.",
     "auto_cal": "Pout 보정을 기록에 맞춤\nDPD OFF 측정 때 같은 SG 의 기록 Pout 과 비교해 보정값을 자동으로 → Bench 와 Pout 이 같아짐. 켬 권장.",
-    "method": "학습 방식\nILA (간접): PA 출력 → 입력 역모델을 배움. 기본 · 안정.\nDLA (직접): 출력 오차를 직접 줄임 - 보통 0.5 ~ 3 dB 더 (조금 느림, 신경망은 ILA 로).\nILA+보정: ILA 반복 뒤 '오차 보정 반복' 만큼 측정하며 출력 오차를 PA 기울기로 보정해 계수를 더 고침 (μ 따로 · 나빠지면 자동 되돌림).\nILC→모델: 먼저 ILC (4 카드 ILC 반복) 로 이 PA 에 맞는 입력을 직접 찾고, 모델이 '원래 신호 → 그 입력' 을 배움 → 그 뒤 ILA 로 다듬음.\n  측정 잡음을 덜 타고 ILC 성능에 가깝게 (대신 ILC 반복만큼 시간 더).",
+    "method": "학습 방식\nILA (간접): PA 출력 → 입력 역모델을 배움. 기본 · 안정.\nDLA (직접): 출력 오차를 직접 줄임 - 보통 0.5 ~ 3 dB 더 (조금 느림, 신경망은 ILA 로).\nILC→모델: 먼저 ILC (4 카드 ILC 반복) 로 이 PA 에 맞는 입력을 직접 찾고, 모델이 '원래 신호 → 그 입력' 을 배움 → 그 뒤 ILA 로 다듬음.\n  측정 잡음을 덜 타고 ILC 성능에 가깝게 (대신 ILC 반복만큼 시간 더).",
     "model": "DPD 모델\nGMP: 기본 · 빠름.\n구간 GMP: Doherty 피크 켜지는 레벨 앞뒤로 GMP 두 벌 (경계 자동).\nDVR: 크기 구간마다 다른 기울기 - Doherty 꺾임에 강함.\n신경망 · 위상정규 신경망: 포화 근처 · 특이한 PA.\n[목록 편집…] 으로 안 쓰는 모델 숨기기.",
     "dvr_seg": "DVR 구간 수\n입력 크기를 몇 구간으로 나눠 기울기를 따로 줄지 (6 ~ 12, 기본 8).\n많을수록 꺾임을 잘 따라가지만 계수 · 잡음이 늘어남.",
     "K": "비선형 차수 K\n|x| 의 몇 제곱까지 쓸지 (5 ~ 9, 기본 7).\n피크 근처 압축 보정이 모자라면 ↑, 결과가 흔들리면 ↓.",
     "M": "메모리 깊이 M\n지금 + 이전 몇 샘플까지 볼지 (2 ~ 6, 기본 4).\nAM-AM 이 두껍게 퍼지면 (메모리 효과) ↑. 신경망도 씀.",
     "L": "GMP 교차 지연 L\n앞뒤 샘플 크기를 섞은 항 (0 ~ 2, 기본 1).\nDoherty · 넓은 대역이면 1 ~ 2. 0 = 메모리 다항식.",
-    "L_lag": "GMP Lagging 항 수\n지난 샘플 크기를 섞은 항 x(n-m)·|x(n-m-l)|^k, l = 1 ~ 이 값 (0 ~ 3).\n빈칸 = 위 L 과 같음. 0 = Lagging 항 안 씀.\n'K · M · L 자동' 이 켜져 있으면 자동이 고른 L 로 앞뒤 같게 (이 칸은 안 씀).",
-    "L_lead": "GMP Leading 항 수\n앞 샘플 크기를 섞은 항 x(n-m)·|x(n-m+l)|^k, l = 1 ~ 이 값 (0 ~ 3).\n빈칸 = 위 L 과 같음. 0 = Leading 항 안 씀.\n'K · M · L 자동' 이 켜져 있으면 자동이 고른 L 로 앞뒤 같게 (이 칸은 안 씀).",
-    "ila_guard_db": "되돌림 기준 (ILA · DLA · ILA+보정 · 신경망)\nDPD 반복 중 ACLR 이 지금까지 가장 좋았던 값보다 이만큼 (dB) 넘게 나빠지면\n가장 좋았던 계수로 돌아가 섞기 비율 μ 를 반으로 줄여 이어서 반복 (기본 1.0 dB, 0 = 끔).\n반복이 끝나면 마지막이 아니라 가장 좋았던 계수 · 신호로 끝냄.",
-    "retry_off": "DPD OFF 보다 나쁘면 다시 (ILA · DLA · ILA+보정 · 신경망)\n반복이 끝났는데도 DPD 결과가 DPD OFF 보다 ACLR 이 나쁘면 처음부터 다시 (기본 2 번, 0 = 끔).\n다시 할 때: 계수 버림 → DPD OFF 다시 재서 목표 이득 다시 → μ ½ 로 반복.\n2 번째부터는 목표 이득 크기를 '작은 신호 이득' 대신 '전체 평균 이득' 으로 (피크가 포화에 걸려 나빠지는 경우).\n다 해도 나쁘면 가장 좋았던 시도로 끝내고 로그에 확인할 것 (SG · 최고값 제한 · 측정 바닥).",
-    "ec_iters": "오차 보정 반복 (학습 = ILA+보정 일 때)\nILA 반복이 끝난 뒤 '측정 → 출력 오차 → 계수 고침' 을 몇 번 더 (기본 6, 0 = 안 함).\n출력 오차를 PA 기울기 (AM-AM · AM-PM) 로 입력 쪽 보정량으로 바꿔 GMP 계수에 더함 → ILA 가 멈춘 곳에서 더 내려감.\n나빠지면 가장 좋았던 계수로 돌아가 μ 를 반으로.",
-    "ec_mu": "오차 보정 μ (학습 = ILA+보정 일 때)\n한 번에 보정량을 얼마나 반영할지 (0.05 ~ 1, 기본 0.5).\n크면 빨리 내려가지만 흔들릴 수 있음 · 반복마다 ACLR 이 오르내리면 0.2 ~ 0.3.\n나빠지면 자동으로 반씩 줄어듦 (최소 0.05). 위 '섞기 비율 μ' 는 ILA 쪽 값 (따로).",
     "iters": "반복 횟수\n학습 → 측정을 몇 번 (3 ~ 5). 보통 2 ~ 3 번째에 거의 수렴.",
     "mu": "섞기 비율 μ\n새 계수를 얼마나 반영 (0.5 ~ 1, 기본 0.7). 반복마다 ACLR 이 흔들리면 0.5.",
     "peak_lim_db": "최고값 제한\nDPD 가 피크를 원래보다 몇 dB 까지 키울 수 있나 (기본 3).\nSG 최대 · PA 포화에 걸리면 2.",
     "lam": "정규화 λ\n계수가 너무 커지지 않게 누르는 값 (기본 1e-6).\n결과가 들쭉날쭉하거나 계수가 폭주하면 1e-5 ~ 1e-4.",
-    "n_fit": "학습 샘플 수\n한 번 학습에 쓰는 샘플 (기본 40000). 늘리면 정확 ↑ · 느려짐 (2 ~ 10만).",
+    "n_fit": "학습 샘플 수\n한 번 학습에 쓰는 샘플 (기본 40000). 늘리면 정확 ↑ · 느려짐 (2 ~ 10만).\n샘플레이트가 2 배면 같은 개수가 담는 시간은 반 (1966 MSps: 4만 = 20 µs).",
+    "fit_us": "학습 길이 (시간, µs)\n모델 계수를 구할 때 신호에서 몇 µs 분량을 쓸지 시간으로 정함.\n샘플 수 = µs × 샘플레이트 로 자동 계산 → 위 '학습 샘플 수' 칸은 무시.\n\n왜 시간으로?\n같은 4만 개라도 491.52 MSps 면 81 µs, 1966 MSps 면 20 µs 뿐 (OFDM 심볼 2 개 정도).\n샘플레이트를 올리면 같은 개수가 담는 신호가 짧아져 피크 · RB 패턴을 덜 봄.\n시간으로 정하면 샘플레이트를 바꿔도 같은 길이의 신호로 학습.\n\n얼마로?\n· 100 MHz (491.52 MSps): 40 ~ 80 µs (2 ~ 4 만 개)\n· 400 MHz (1966 MSps): 40 ~ 80 µs (8 ~ 16 만 개)\n길수록 정확 ↑ · 학습이 느려지고 메모리 ↑ (GMP 계수가 많으면 특히).\n신호 전체보다 길면 신호 전체를 씀.\n\n빈칸 = 위 '학습 샘플 수' 그대로 (예전 방식).\n실행하면 로그 '학습: N 샘플 (µs · 신호의 %)' 에서 실제 값 확인.",
+    "fit_segs": "학습 조각 수\n학습에 쓰는 샘플을 몇 조각으로 나눠 신호 전체에서 뽑을지.\n\n예: 학습 4 만 개 · 조각 8 → 5000 개씩 8 곳, 신호 처음부터 끝까지 같은 간격.\n\n왜 나누나?\n한 곳 (조각 1) 만 쓰면 그 짧은 구간에 있는 피크 · RB 배치에만 맞춰져서\n나머지 구간 (= 실제로 PA 에 들어가는 신호 대부분) 에서 덜 맞을 수 있음.\n나눠 뽑으면 같은 계산량으로 신호 전체의 통계 (큰 피크 · 작은 신호 · 여러 심볼) 를 고르게 봄.\n\n랜덤 아님: 자리는 늘 같음 → 같은 설정이면 매번 같은 계수 · 결과 (재현 가능).\n\n얼마로?\n· 기본 1 = 예전 프로그램 그대로 (한 구간). 나눠 보려면 8 추천 · 신호가 길면 (수 ms) 16 도 괜찮음\n· 조각 하나가 2000 개보다 짧아지면 자동으로 개수를 줄임 (메모리 효과 M · L 을 담으려면 너무 짧으면 안 됨)\n\nGMP · 구간 GMP · DVR · 신경망 · ILC→모델 (집중 가중 학습 포함) 모두 같은 방식.",
     "nn_hidden": "신경망 은닉 크기\n은닉층 크기 (16 ~ 32, 기본 24). 크면 강하지만 학습이 느림.",
     "nn_epochs": "신경망 학습 횟수\n(20 ~ 50, 기본 30). 결과가 덜 좋으면 ↑.",
     "ilc_iters": "ILC 반복\n한계 ACLR 찾기 반복 (10 ~ 15).",
     "ilc_gain": "ILC 이득\n한 번에 고치는 양 (기본 0.8). 흔들리면 0.5.",
     "odd_only": "홀수 차수만\nK = 1, 3, 5 … 만 사용. 보통 끔 (짝수 항도 도움이 됨).",
-    "auto_model": "K · M · L 자동\n계산으로 36 조합 → 후보 3개 실측 → ACLR 가장 좋은 것. 고른 값은 칸에 들어가고 샘플별 기억.\n처음 · 새 샘플이면 켬, 주파수 · 샘플 비교 측정이면 끄고 고정.",
+    "auto_model": "모델 크기 자동 (GMP · DVR)\nGMP: K · M · L 을 계산으로 36 조합 → 후보 3개 실측 → ACLR 가장 좋은 것.\nDVR: 구간 수 · M 을 계산으로 20 조합 → 후보 3개 실측 → ACLR 가장 좋은 것.\n고른 값은 칸에 들어가고 샘플별 기억. ILC→모델 에서는 5 카드 \'넓혀 찾기\' 가 같은 일을 (계산만).\n처음 · 새 샘플이면 켬, 주파수 · 샘플 비교 측정이면 끄고 고정.",
     "run_mode": "실행 방식\n한 레벨: 2 카드 SG 레벨에서. 파워 스윕: SG 시작 ~ 끝을 간격마다 (레벨마다 OFF → DPD).\n처음엔 한 레벨로 확인 → 파워 스윕.",
     "sw_start": "SG 시작\n파워 스윕 첫 SG 레벨 (dBm).",
     "sw_stop": "SG 끝\n파워 스윕 마지막 SG 레벨. SG 최대 이하.",
@@ -697,7 +693,7 @@ BTN_TIPS = {
     "btn_rf": "SG RF 한 버튼\n● RF ON (빨강) = 지금 켜짐 → 누르면 끔 · ○ RF OFF = 꺼짐 → 누르면 (확인 후) 켬 · RF ? = 몰라서 SMW 에 물어본 뒤 반대로.\n측정 중에 누르면 중지 (RF OFF). 바이어스 · 파워서플라이 · FSW 화면은 그대로.",
     "btn_send": "고른 입력 신호 계속 내보내기\n아래 측정 기록 표에서 고른 줄 (없으면 ★ 가장 좋은 측정) 의 입력 신호를 SMW 로 보내고 RF 를 켜 둠 (계속 쏨).\n중지한 뒤에도 됨 (최근 30 개 · 가장 좋은 것 보관). 끄려면 [SG RF OFF].",
     "btn_recheck": "고른 신호로 다시 재기\n표에서 고른 줄 (없으면 ★) 의 입력 신호를 다시 보내 한 번 측정 (ACLR 은 FSW Mod. 화면) → 같은 결과가 나오는지 확인.",
-    "btn_savefinal": "고른 입력 .wv 저장\n표에서 고른 줄 (없으면 ★) 의 입력 신호를 R&S .wv 로. 파일 이름에 ACLR · SMW 레벨 (dBm) · 주파수.\n같은 이름 _설정.xlsx 도 같이: 그 측정 때 1 ~ 5 카드 설정 · 자동으로 정해진 값 · 결과 (다음에 참고).\nPA 출력 I/Q 는 측정 기록 위 [고른 출력 I/Q 저장…].",
+    "btn_savefinal": "고른 입력 .wv 저장\n표에서 고른 줄 (없으면 ★) 의 입력 신호를 R&S .wv 로. 파일 이름에 ACLR · SMW 레벨 (dBm) · 주파수.\n같은 이름 _설정.xlsx 도 같이: 그 측정 때 1 ~ 6 카드 설정 · 자동으로 정해진 값 · 결과 (다음에 참고).\nPA 출력 I/Q 는 측정 기록 위 [고른 출력 I/Q 저장…].",
     "btn_more": "이어서 반복\n끝난 (또는 중지한) DPD · ILC 를 그 결과 (계수 · 입력 · 이득) 에서 이어서 N 번 더. 같은 SG 레벨.\n표 · 그래프 · 기록은 이어 붙임. 반복을 짧게 돌려 보고 좋으면 더 돌릴 때.",
     "btn_cmp": "방식 비교 실행\n같은 SG 레벨 · 같은 DPD OFF 에서 고른 방식들을 차례로 DPD.\n끝나면 요약 표 (★ = 가장 좋은 것) + 방식마다 기록.\n처음 몇 번 해 보고 맞는 방식을 4 카드에 넣으면 됨.",
     "btn_models": "모델 목록 편집\n4 카드 · 방식 비교에 보일 모델을 넣고 빼기 (숨김일 뿐 · 언제든 다시).",
@@ -764,18 +760,14 @@ class App:
         ("K", "비선형 차수 K", "7", "", "dpd"),
         ("M", "메모리 깊이 M", "4", "탭", "dpd"),
         ("L", "GMP 교차 지연 L", "1", "0 = 메모리 다항식", "dpd"),
-        ("L_lag", "  Lagging 항 (l+)", "", "빈칸 = L 과 같음", "dpd"),
-        ("L_lead", "  Leading 항 (l−)", "", "빈칸 = L 과 같음", "dpd"),
         ("dvr_seg", "DVR 구간 수", "8", "개 (6 ~ 12)", "dpd"),
         ("iters", "반복 횟수", "4", "번", "dpd"),
         ("mu", "섞기 비율 μ", "0.7", "1 = 새 계수만", "dpd"),
-        ("ila_guard_db", "되돌림 기준", "1.0", "dB 나빠지면 최고로 (0 = 끔)", "dpd"),
-        ("retry_off", "OFF 보다 나쁘면 다시", "2", "번 (0 = 끔)", "dpd"),
-        ("ec_iters", "오차 보정 반복", "6", "번 (ILA 반복 뒤 · 0 = 안 함)", "dpd"),
-        ("ec_mu", "오차 보정 μ", "0.5", "(0.05 ~ 1 · 나빠지면 자동 ½)", "dpd"),
         ("peak_lim_db", "최고값 제한", "3", "dB (원래 최고값 +)", "dpd"),
         ("lam", "정규화 λ", "1e-6", "", "dpd"),
-        ("n_fit", "학습 샘플 수", "40000", "개", "dpd"),
+        ("n_fit", "학습 샘플 수", "40000", "개 (시간 칸 쓰면 무시)", "dpd"),
+        ("fit_us", "학습 길이 (시간)", "", "µs (빈칸 = 샘플 수 그대로)", "dpd"),
+        ("fit_segs", "학습 조각 수", "1", "개 (1 = 한 구간 · 예 8 = 전체에 고르게)", "dpd"),
         ("nn_hidden", "신경망 은닉 크기", "24", "개 (신경망만)", "dpd"),
         ("nn_epochs", "신경망 학습 횟수", "30", "번 (신경망만)", "dpd"),
         ("ilc_iters", "ILC 반복", "15", "번 (한계 ACLR)", "dpd"),
@@ -790,10 +782,9 @@ class App:
                  "pnn": "신경망 + 위상 정규화 (진폭 왜곡부터 배움)",
                  "tnn": "PyTorch 큰 신경망 (2층 · 위상 정규화) - torch 없으면 numpy 로 대신"}
     # 모델마다 보이는 칸 (없는 칸은 모든 모델 공통)
-    MODEL_ROWS = {"K": ("gmp", "sgmp"), "L": ("gmp", "sgmp"), "L_lag": ("gmp", "sgmp"), "L_lead": ("gmp", "sgmp"), "ec_iters": ("gmp", "sgmp", "dvr"), "ec_mu": ("gmp", "sgmp", "dvr"), "dvr_seg": ("dvr",), "mu": ("gmp", "sgmp", "dvr"),
+    MODEL_ROWS = {"K": ("gmp", "sgmp"), "L": ("gmp", "sgmp"), "dvr_seg": ("dvr",), "mu": ("gmp", "sgmp", "dvr"),
                   "lam": ("gmp", "sgmp", "dvr"), "nn_hidden": ("nn", "pnn", "tnn"), "nn_epochs": ("nn", "pnn", "tnn"),
-                  "_odd": ("gmp", "sgmp"), "_auto": ("gmp",), "_learn": ("gmp", "sgmp", "dvr", "nn", "pnn", "tnn")}
-    METHOD_ROWS = {"ec_iters": ("ilaec",), "ec_mu": ("ilaec",), "retry_off": ("ila", "dla", "ilaec")}        # JSH: 학습 방식마다 보이는 칸
+                  "_odd": ("gmp", "sgmp"), "_auto": ("gmp", "dvr"), "_learn": ("gmp", "sgmp", "dvr", "nn", "pnn", "tnn")}
     CMP_DEF = ["gmp:ila", "gmp:dla", "sgmp:ila", "dvr:ila", "nn:ila", "pnn:ila"]
     OS_TXT = {"2": "245.76 MSps · 인접 채널 일부만", "3": "368.64 MSps", "4": "491.52 MSps (권장)"}
 
@@ -1009,6 +1000,8 @@ class App:
         self.root.configure(bg=T["bg"])
         for tg_ in list(getattr(self, "_toggles", [])):
             tg_.draw()
+        if getattr(self, "_wm_hint", None):
+            self._wm_hint()
         for w, opts in list(self._themed):
             try:
                 w.configure(**{k: THEME[v] for k, v in opts.items()})
@@ -1473,7 +1466,7 @@ class App:
 
     def params_safe(self):
         out = {}
-        for k in ("iters", "ilc_iters", "K", "M", "L", "L_lag", "L_lead", "method", "model", "auto_model", "dvr_seg", "nn_hidden"):
+        for k in ("iters", "ilc_iters", "K", "M", "L", "method", "model", "auto_model", "dvr_seg", "nn_hidden"):
             try:
                 out[k] = self.v[k].get()
             except Exception:
@@ -1519,6 +1512,43 @@ class App:
         ttk.Label(body, text=unit, style="Unit.TLabel").grid(row=r, column=2, sticky="w", padx=(5, 0))
         return w
 
+    def tools(self, b, start=0, span=3):
+        """카드 안 줄 도우미: nxt() 다음 줄 번호 · sec(제목) 묶음 머리 · opt(...) 한 줄 스위치"""
+        R = [start]
+
+        def nxt():
+            R[0] += 1
+            return R[0] - 1
+
+        def sec(txt, top=10):
+            f_ = ttk.Frame(b, style="Card.TFrame")
+            f_.grid(row=nxt(), column=0, columnspan=span, sticky="ew", pady=(top, 2))
+            ttk.Label(f_, text=txt, style="Lab.TLabel", font=FB).pack(side="left")
+            ln_ = tk.Frame(f_, height=1, bd=0)
+            self.reg(ln_, bg="border")
+            ln_.pack(side="left", fill="x", expand=True, padx=(8, 0), pady=(2, 0))
+            return f_
+
+        def opt(key, text, sub="", dflt=True, tip=None, command=None):
+            if key not in self.v:
+                self.v[key] = tk.BooleanVar(value=bool(self.s.get(key, dflt)))
+            f_ = ttk.Frame(b, style="Card.TFrame")
+            f_.grid(row=nxt(), column=0, columnspan=span, sticky="ew", pady=(3, 0))
+            tg = Toggle(f_, self.v[key], self, command=command)
+            tg.pack(side="right", padx=(8, 0))
+            tx = ttk.Frame(f_, style="Card.TFrame")
+            tx.pack(side="left", fill="x", expand=True)
+            lb = ttk.Label(tx, text=text, style="Lab.TLabel", cursor="hand2")
+            lb.pack(anchor="w")
+            lb.bind("<Button-1>", lambda e: tg.flip())
+            if sub:
+                ttk.Label(tx, text=sub, style="Hint.TLabel").pack(anchor="w")
+            if tip:
+                Tip(lb, tip)
+                Tip(tg, tip)
+            return f_
+        return nxt, sec, opt
+
     def build_left(self, inner):
         W = 400
         fields = {}
@@ -1533,12 +1563,14 @@ class App:
         self.seg(b, self.v["bw_mode"], (("100", "100 MHz DPD"), ("400", "400 MHz DPD"))).grid(row=0, column=1, columnspan=2, sticky="w")
         self.v["sig_src"] = tk.StringVar(value=self.s.get("sig_src", "nr"))
         self.v["wv_path"] = tk.StringVar(value=self.s.get("wv_path", ""))
+        nx1, sec1, opt1 = self.tools(b, 1)
+        sec1("신호 고르기")                                       # 줄 1
         self.lbl_src = ttk.Label(b, text="신호", style="Lab.TLabel")
-        self.lbl_src.grid(row=1, column=0, sticky="w", pady=2)
+        self.lbl_src.grid(row=2, column=0, sticky="w", pady=2)
         self.seg_src = self.seg(b, self.v["sig_src"], (("nr", "NR 100 MHz 1C 만들기"), ("file", "내 .wv")))
-        self.seg_src.grid(row=1, column=1, columnspan=2, sticky="w")
+        self.seg_src.grid(row=2, column=1, columnspan=2, sticky="w")
         self.f_file = ttk.Frame(b, style="Card.TFrame")
-        self.f_file.grid(row=2, column=0, columnspan=3, sticky="ew", pady=(4, 0))
+        self.f_file.grid(row=3, column=0, columnspan=3, sticky="ew", pady=(4, 0))
         ln1 = ttk.Frame(self.f_file, style="Card.TFrame")
         ln1.pack(side="top", fill="x")
         self.btn_wv = ttk.Button(ln1, text="불러오기…", command=self.pick_wv)
@@ -1555,7 +1587,7 @@ class App:
         self.chk_up = ttk.Checkbutton(self.f_file, text="1000 MSps 넘으면 절반으로 (권장 · 빠르고 FSW 가 다 받음)", variable=self.v["file_half400"],
                                       style="Card.TCheckbutton")
         self.f_nr = ttk.Frame(b, style="Card.TFrame")
-        self.f_nr.grid(row=3, column=0, columnspan=3, sticky="ew", pady=(4, 0))
+        self.f_nr.grid(row=4, column=0, columnspan=3, sticky="ew", pady=(4, 0))
         nb = self.f_nr
         ttk.Label(nb, text="캐리어", style="Lab.TLabel").grid(row=0, column=0, sticky="w", pady=2, padx=(0, 8))
         self.v["carrier"] = tk.StringVar(value="1C")
@@ -1563,6 +1595,8 @@ class App:
         self.v["carrier"].trace_add("write", lambda *a: self.v["carrier"].get() != "1C" and self.v["carrier"].set("1C"))
         r = 1
         for key, name, dflt, unit in fields["sig"]:
+            if key == "papr_db":
+                continue
             self.field(nb, r, key, name, dflt, unit)
             r += 1
         ttk.Label(nb, text="샘플레이트", style="Lab.TLabel").grid(row=r, column=0, sticky="w", pady=2)
@@ -1572,11 +1606,16 @@ class App:
         self.lbl_os.grid(row=r, column=2, sticky="w", padx=(5, 0))
         self.v["os"].trace_add("write", lambda *a: self.lbl_os.configure(text=self.OS_TXT.get(self.v["os"].get(), "")))
         self.lbl_os.configure(text=self.OS_TXT.get(self.v["os"].get(), ""))
-        self.v["cfr_on"] = tk.BooleanVar(value=bool(self.s.get("cfr_on", True)))
-        ttk.Checkbutton(nb, text="CFR 사용 (클리핑 + 필터로 PAPR 줄이기)", variable=self.v["cfr_on"],
-                        style="Card.TCheckbutton").grid(row=r + 1, column=0, columnspan=3, sticky="w", pady=(4, 0))
+        nxn, secn, optn = self.tools(nb, r + 1)
+        secn("CFR (PAPR 줄이기)")
+        optn("cfr_on", "CFR 사용", "클리핑 + 필터로 PAPR 줄이기", True)
+        for key, name, dflt, unit in fields["sig"]:
+            if key == "papr_db":
+                self.field(nb, nxn(), key, name, dflt, unit)
+        nx1, sec1, opt1 = self.tools(b, 5)
+        sec1("ACLR 채널")                                         # 줄 5
         af = ttk.Frame(b, style="Card.TFrame")
-        af.grid(row=4, column=0, columnspan=3, sticky="ew", pady=(6, 0))
+        af.grid(row=6, column=0, columnspan=3, sticky="ew", pady=(2, 0))
         ttk.Label(af, text="ACLR 채널", style="Lab.TLabel").pack(side="left")
         self.v["ch_bw_mhz"] = tk.StringVar(value=str(self.s.get("ch_bw_mhz", "98.28")))
         self.e_chbw = ttk.Entry(af, textvariable=self.v["ch_bw_mhz"], width=6, justify="right")
@@ -1587,65 +1626,69 @@ class App:
         self.e_adj.pack(side="left", padx=3)
         ttk.Label(af, text="MHz", style="Unit.TLabel").pack(side="left")
         bf = ttk.Frame(b, style="Card.TFrame")
-        bf.grid(row=5, column=0, columnspan=3, sticky="ew", pady=(8, 0))
+        bf.grid(row=7, column=0, columnspan=3, sticky="ew", pady=(8, 0))
         ttk.Button(bf, text="신호 만들기", command=self.make_signal).pack(side="left")
         ttk.Button(bf, text=".wv 저장…", command=self.save_wv_orig).pack(side="left", padx=4)
         self.lbl_sig = ttk.Label(b, text="", style="Hint.TLabel", wraplength=W - 40)
-        self.lbl_sig.grid(row=6, column=0, columnspan=3, sticky="w", pady=(4, 0))
+        self.lbl_sig.grid(row=8, column=0, columnspan=3, sticky="w", pady=(4, 0))
         self._bw_cur = self.v["bw_mode"].get()
         self.v["bw_mode"].trace_add("write", lambda *a: self.bw_changed())
         self.v["sig_src"].trace_add("write", lambda *a: self.sig_src_changed())
         self.v["wv_path"].trace_add("write", lambda *a: self.sig_src_changed())
 
         # 2 RF · 손실
-        c = self.card(inner, "RF · 케이블 손실", 2)
+        c = self.card(inner, "RF · 손실 · FSW", 2)
         c.pack(fill="x", padx=(2, 6), pady=(0, 6))
         b = c.body
-        r = 0
-        for key, name, dflt, unit in fields["rf"]:
-            self.field(b, r, key, name, dflt, unit)
-            r += 1
-        self.v["bench_loss"] = tk.BooleanVar(value=bool(self.s.get("bench_loss", True)))
-        ttk.Checkbutton(b, text="손실 = PA Bench Monitor 손실 표 사용", variable=self.v["bench_loss"],
-                        style="Card.TCheckbutton", command=self.apply_bench_loss).grid(row=r, column=0, columnspan=3, sticky="w", pady=(4, 0))
+        nx2, sec2, opt2 = self.tools(b, 0)
+        rf_f = {k_: f_ for k_, *f_ in [(f[0], f[1], f[2], f[3]) for f in fields["rf"]]}
+
+        def fld(key, width=8):
+            name, dflt, unit = rf_f[key]
+            return self.field(b, nx2(), key, name, dflt, unit, width=width)
+        sec2("주파수 · SG", top=0)
+        for k_ in ("freq_ghz", "sg_dbm", "sg_max_dbm"):
+            fld(k_)
+        sec2("손실")
+        opt2("bench_loss", "Bench 손실 표 사용", "켜면 아래 입력 · 출력 손실 자동 (주파수마다)", True, command=self.apply_bench_loss)
         self.lbl_loss = ttk.Label(b, text="", style="Info.TLabel", wraplength=W - 40)
-        self.lbl_loss.grid(row=r + 1, column=0, columnspan=3, sticky="w")
-        self.v["aclr_src"] = tk.StringVar(value=self.s.get("aclr_src", "fsw_end"))
-        ttk.Label(b, text="ACLR 읽기", style="Lab.TLabel").grid(row=r + 4, column=0, sticky="w", pady=(8, 0))
-        self.seg(b, self.v["aclr_src"], (("fsw_end", "Mod. OFF·최종"), ("fsw", "Mod. 매번"), ("iq", "I/Q"))).grid(
-            row=r + 4, column=1, columnspan=2, sticky="w", pady=(8, 0))
-        ttk.Label(b, text="Mod. = FSW Mod. 화면 (스펙트럼 · 잡음 낮음) ACLR · OFF·최종 = 반복 중엔 I/Q (화면 고정), OFF 와 레벨 끝만 Mod. · 학습은 늘 I/Q",
-                  style="Unit.TLabel", wraplength=W - 40).grid(row=r + 5, column=0, columnspan=3, sticky="w")
-        self.v["fsw_park"] = tk.BooleanVar(value=bool(self.s.get("fsw_park", True)))
-        ttk.Checkbutton(b, text="FSW 화면은 Mod. 화면 (ACLR) 에 두기 (I/Q 받을 때만 잠깐 I/Q)", variable=self.v["fsw_park"],
-                        style="Card.TCheckbutton").grid(
-            row=r + 6, column=0, columnspan=3, sticky="w", pady=(4, 0))
-        self.v["cal_mod"] = tk.BooleanVar(value=bool(self.s.get("cal_mod", True)))
-        ttk.Checkbutton(b, text="Pout 을 FSW Mod. 화면 채널 전력에 맞춤 (실행 첫 측정에서 Pout 보정 자동)", variable=self.v["cal_mod"],
-                        style="Card.TCheckbutton").grid(row=r + 7, column=0, columnspan=3, sticky="w", pady=(2, 0))
-        self.v["cal_every"] = tk.BooleanVar(value=bool(self.s.get("cal_every", False)))
-        ttk.Checkbutton(b, text="  └ 매 측정마다 다시 맞춤 (반복마다 스펙트럼을 읽음 · 느림)", variable=self.v["cal_every"],
-                        style="Card.TCheckbutton").grid(row=r + 9, column=0, columnspan=3, sticky="w", pady=(0, 0))
-        ps0 = self.s.get("pout_src", "iq")
-        self.v["pout_src"] = tk.StringVar(value=ps0 if ps0 in ("iq", "spec") else "iq")
-        ttk.Label(b, text="Pout 기준", style="Lab.TLabel").grid(row=r + 8, column=0, sticky="w", pady=(4, 0))
-        self.seg(b, self.v["pout_src"], (("iq", "I/Q + 보정"), ("spec", "스펙트럼 (읽는 측정)"))).grid(
-            row=r + 8, column=1, columnspan=2, sticky="w", pady=(4, 0))
-        ttk.Label(b, text="추가 손실", style="Lab.TLabel").grid(row=r + 2, column=0, sticky="w", pady=(8, 0))
+        self.lbl_loss.grid(row=nx2(), column=0, columnspan=3, sticky="w")
+        for k_ in ("in_loss_db", "out_loss_db", "cal_db"):
+            fld(k_)
+        opt2("xloss_on", "추가 손실 표 사용", "커플러 등 · 없으면 끄기", True, command=self.show_xloss)
         xf = ttk.Frame(b, style="Card.TFrame")
-        xf.grid(row=r + 2, column=1, columnspan=2, sticky="w", pady=(8, 0))
+        xf.grid(row=nx2(), column=0, columnspan=3, sticky="w", pady=(2, 0))
         self.btn_xloss = ttk.Button(xf, text="표 편집…", command=self.edit_xloss)
         self.btn_xloss.pack(side="left")
         ttk.Button(xf, text="없음", command=self.clear_xloss).pack(side="left", padx=(4, 0))
-        self.v["xloss_on"] = tk.BooleanVar(value=bool(self.s.get("xloss_on", True)))
-        ttk.Checkbutton(xf, text="사용 (커플러 없으면 끄기)", variable=self.v["xloss_on"], style="Card.TCheckbutton",
-                        command=self.show_xloss).pack(side="left", padx=(8, 0))
         self.lbl_xloss = ttk.Label(b, text="", style="Info.TLabel", wraplength=W - 40)
-        self.lbl_xloss.grid(row=r + 3, column=0, columnspan=3, sticky="w")
+        self.lbl_xloss.grid(row=nx2(), column=0, columnspan=3, sticky="w")
+        sec2("FSW 읽기")
+        for k_ in ("fsw_ref_dbm", "ref_margin_db", "fsw_att_db", "fsw_rbw_khz", "iq_avg", "pout_band", "settle_s"):
+            fld(k_)
+        for k_ in [f[0] for f in fields["rf"]]:            # 혹시 새로 생긴 칸 (위에 없는 것)
+            if k_ not in self.v:
+                fld(k_)
+        self.v["aclr_src"] = tk.StringVar(value=self.s.get("aclr_src", "fsw_end"))
+        r_ = nx2()
+        ttk.Label(b, text="ACLR 읽기", style="Lab.TLabel").grid(row=r_, column=0, sticky="w", pady=(6, 0))
+        self.seg(b, self.v["aclr_src"], (("fsw_end", "Mod. OFF·최종"), ("fsw", "Mod. 매번"), ("iq", "I/Q"))).grid(
+            row=r_, column=1, columnspan=2, sticky="w", pady=(6, 0))
+        ttk.Label(b, text="Mod. = FSW Mod. 화면 (스펙트럼 · 잡음 낮음) ACLR · OFF·최종 = 반복 중엔 I/Q (화면 고정), OFF 와 레벨 끝만 Mod. · 학습은 늘 I/Q",
+                  style="Unit.TLabel", wraplength=W - 40).grid(row=nx2(), column=0, columnspan=3, sticky="w")
+        ps0 = self.s.get("pout_src", "iq")
+        self.v["pout_src"] = tk.StringVar(value=ps0 if ps0 in ("iq", "spec") else "iq")
+        r_ = nx2()
+        ttk.Label(b, text="Pout 기준", style="Lab.TLabel").grid(row=r_, column=0, sticky="w", pady=(4, 0))
+        self.seg(b, self.v["pout_src"], (("iq", "I/Q + 보정"), ("spec", "스펙트럼 (읽는 측정)"))).grid(
+            row=r_, column=1, columnspan=2, sticky="w", pady=(4, 0))
+        opt2("fsw_park", "FSW 화면은 Mod. 화면에 두기", "I/Q 받을 때만 잠깐 I/Q", True)
+        opt2("cal_mod", "Pout 을 Mod. 채널 전력에 맞춤", "실행 첫 측정에서 Pout 보정 자동", True)
+        opt2("cal_every", "매 측정마다 다시 맞춤", "반복마다 스펙트럼을 읽음 · 느림", False)
         self.v["freq_ghz"].trace_add("write", lambda *a: self.apply_bench_loss())
 
         # 3 Bench 기록 → Pout
-        c = self.card(inner, "PA Bench 기록 → Pout", 3, "읽기만 함")
+        c = self.card(inner, "Pout 목표 · 맞춤", 3, "PA Bench 기록 읽기만")
         c.pack(fill="x", padx=(2, 6), pady=(0, 6))
         b = c.body
         ttk.Label(b, text="샘플 종류", style="Lab.TLabel").grid(row=0, column=0, sticky="w", pady=2, padx=(0, 8))
@@ -1673,29 +1716,26 @@ class App:
         ttk.Entry(tf_, textvariable=self.v["b_target"], width=7, justify="right").pack(side="left")
         ttk.Label(tf_, text="dBm", style="Unit.TLabel").pack(side="left", padx=(4, 6))
         ttk.Button(tf_, text="→ SG 레벨 정하기", command=self.sg_from_target).pack(side="left")
-        self.v["auto_cal"] = tk.BooleanVar(value=bool(self.s.get("auto_cal", True)))
-        ttk.Checkbutton(b, text="DPD OFF 측정 때 Pout 보정을 이 기록에 맞춤", variable=self.v["auto_cal"],
-                        style="Card.TCheckbutton").grid(row=4, column=0, columnspan=3, sticky="w", pady=(4, 0))
-        self.v["pout_lock_on"] = tk.BooleanVar(value=bool(self.s.get("pout_lock_on", False)))
-        ttk.Checkbutton(b, text="실행 때 목표 Pout 에 SG 를 재며 맞추고 그 SG 로 고정 → DPD", variable=self.v["pout_lock_on"],
-                        style="Card.TCheckbutton", command=lambda: self.v["pout_strict"].set(True) if self.v["pout_lock_on"].get() else None
-                        ).grid(row=5, column=0, columnspan=3, sticky="w", pady=(2, 0))
+        nx3, sec3, opt3 = self.tools(b, 4)
+        sec3("맞춤")
+        opt3("auto_cal", "DPD OFF 때 Pout 보정을 이 기록에 맞춤", "", True)
+        opt3("pout_lock_on", "실행 때 목표 Pout 에 SG 맞추고 고정", "SG 를 재며 맞추고 그 SG 로 DPD", False,
+             command=lambda: self.v["pout_strict"].set(True) if self.v["pout_lock_on"].get() else None)
         if not self.s.get("_strict2"):                    # v0.2.3.80: 목표 Pout 에 딱 맞추기가 기본 (한 번만 켬 · 끄면 그대로)
             self.s["pout_strict"], self.s["_strict2"] = True, True
         self.v["pout_strict"] = tk.BooleanVar(value=bool(self.s.get("pout_strict", True)))
         self.v["pout_tol"] = tk.StringVar(value=str(self.s.get("pout_tol", "0.05")))
-        sf_ = ttk.Frame(b, style="Card.TFrame")
-        sf_.grid(row=6, column=0, columnspan=3, sticky="w")
-        ttk.Checkbutton(sf_, text="  └ 반복마다 Pout 딱 맞춤 ±", variable=self.v["pout_strict"],
-                        style="Card.TCheckbutton").pack(side="left")
-        ttk.Entry(sf_, textvariable=self.v["pout_tol"], width=5, justify="right").pack(side="left")
-        ttk.Label(sf_, text=" dB (벗어나면 SG 고쳐 다시 · 느림)", style="Card.TLabel").pack(side="left")
+        opt3("pout_strict", "반복마다 Pout 딱 맞춤", "벗어나면 SG 고쳐 다시 · 느림", True)
+        r_ = nx3()
+        ttk.Label(b, text="딱 맞춤 범위 ±", style="Lab.TLabel").grid(row=r_, column=0, sticky="w", pady=2, padx=(0, 8))
+        ttk.Entry(b, textvariable=self.v["pout_tol"], width=7, justify="right").grid(row=r_, column=1, sticky="w")
+        ttk.Label(b, text="dB", style="Unit.TLabel").grid(row=r_, column=2, sticky="w", padx=(5, 0))
+        sec3("이상 측정")
         self.v["bad_gain_db"] = tk.StringVar(value=str(self.s.get("bad_gain_db", "3")))
-        bf_ = ttk.Frame(b, style="Card.TFrame")
-        bf_.grid(row=7, column=0, columnspan=3, sticky="w", pady=(2, 0))
-        ttk.Label(bf_, text="이상 측정: Gain 이", style="Card.TLabel").pack(side="left")
-        ttk.Entry(bf_, textvariable=self.v["bad_gain_db"], width=4, justify="right").pack(side="left", padx=2)
-        ttk.Label(bf_, text="dB 넘게 떨어지면 버리고 다시 → 또 그러면 멈춤 (0 = 끔)", style="Card.TLabel").pack(side="left")
+        r_ = nx3()
+        ttk.Label(b, text="Gain 급감", style="Lab.TLabel").grid(row=r_, column=0, sticky="w", pady=2, padx=(0, 8))
+        ttk.Entry(b, textvariable=self.v["bad_gain_db"], width=7, justify="right").grid(row=r_, column=1, sticky="w")
+        ttk.Label(b, text="dB 넘게 떨어지면 버리고 다시 (0 = 끔)", style="Unit.TLabel", wraplength=W - 200).grid(row=r_, column=2, sticky="w", padx=(5, 0))
 
         # 4 DPD
         c = self.card(inner, "DPD (모델 · 학습)", 4, "GMP · DVR · 신경망")
@@ -1704,7 +1744,7 @@ class App:
         self.dpd_body = b
         m0 = self.s.get("model") or ("nn" if self.s.get("method") == "nn" else "gmp")
         self.v["model"] = tk.StringVar(value=m0)
-        self.v["method"] = tk.StringVar(value=self.s.get("method") if self.s.get("method") in ("ila", "dla", "ilcm", "ilaec") else "ila")
+        self.v["method"] = tk.StringVar(value=self.s.get("method") if self.s.get("method") in ("ila", "dla", "ilcm") else "ila")
         ttk.Label(b, text="모델", style="Lab.TLabel").grid(row=0, column=0, sticky="w")
         mf = ttk.Frame(b, style="Card.TFrame")
         mf.grid(row=0, column=1, columnspan=2, sticky="w", pady=(0, 2))
@@ -1718,11 +1758,13 @@ class App:
         self.lbl_model = ttk.Label(b, text="", style="Unit.TLabel")
         self.lbl_model.grid(row=1, column=1, columnspan=2, sticky="w")
         ttk.Label(b, text="학습", style="Lab.TLabel").grid(row=2, column=0, sticky="w")
-        self.seg(b, self.v["method"], (("ila", "ILA"), ("dla", "DLA"), ("ilcm", "ILC→모델"), ("ilaec", "ILA+보정"))).grid(
+        if self.v["method"].get() == "ilcm":               # ILC→모델 은 5 카드 (ILC) 로 옮김
+            self.v["method"].set("ila")
+        self.seg(b, self.v["method"], (("ila", "ILA (간접)"), ("dla", "DLA (직접)"))).grid(
             row=2, column=1, columnspan=2, sticky="w", pady=(2, 4))
         self.dpd_rows = {"_learn": 2}
         r = 3
-        ILC_K = ("ilc_iters", "ilc_gain", "focus_mhz", "focus_w")
+        ILC_K = ("ilc_iters", "ilc_gain", "focus_mhz", "focus_w")      # 집중 구간 · 가중은 아래 '보정 기준' 묶음 · ILC 반복 · 이득은 5 카드
         for key, name, dflt, unit in fields["dpd"]:
             if key in ILC_K:
                 continue
@@ -1735,9 +1777,8 @@ class App:
         self.v["focus_on"] = tk.BooleanVar(value=bool(self.s.get("focus_on", True)))      # 예전 설정 호환용
         wm0 = self.s.get("w_mode") or ("focus" if self.s.get("focus_on", True) else "time")
         self.v["w_mode"] = tk.StringVar(value=wm0 if wm0 in self.W_MODES else "focus")
-        ttk.Label(b, text="보정 기준", style="Lab.TLabel").grid(row=r, column=0, sticky="w", pady=(4, 0))
         self.seg_w = self.seg(b, self.v["w_mode"], (("time", "시간"), ("focus", "주파수·집중"), ("aclr", "주파수·ACLR")))
-        self.seg_w.grid(row=r, column=1, columnspan=2, sticky="w", pady=(4, 0))
+        self.seg_w.grid(row=r, column=0, columnspan=3, sticky="w", pady=(4, 0), padx=(6, 0))
         self.v["w_mode"].trace_add("write", lambda *a: (self.v["focus_on"].set(self.v["w_mode"].get() == "focus"),
                                                         self.draw() if self.results else None))
         if "focus_mhz" in self.v:                          # 집중 구간을 바꾸면 그래프에 바로 (측정 끝 · 중지 뒤 미리 보기)
@@ -1751,29 +1792,54 @@ class App:
         self.v["auto_wide"] = tk.BooleanVar(value=bool(self.s.get("auto_wide", False)))
         af_ = ttk.Frame(b, style="Card.TFrame")
         af_.grid(row=r + 1, column=0, columnspan=3, sticky="w", pady=(2, 0))
-        ttk.Checkbutton(af_, text="K · M · L 자동 (계산으로 후보 → 실측 ACLR 로 고름)", variable=self.v["auto_model"],
-                        style="Card.TCheckbutton").pack(side="left")
-        ttk.Checkbutton(af_, text="넓게", variable=self.v["auto_wide"], style="Card.TCheckbutton").pack(side="left", padx=(8, 0))
+        ttk.Checkbutton(af_, text="모델 크기 자동 (GMP K·M·L · DVR 구간·M → 실측 ACLR 로 고름)", variable=self.v["auto_model"],
+                        style="Card.TCheckbutton").pack(side="top", anchor="w")
+        ttk.Checkbutton(af_, text="넓게 (후보 100 개 넘게 · 실측 5 개)", variable=self.v["auto_wide"], style="Card.TCheckbutton").pack(side="top", anchor="w", padx=(20, 0))
         Tip(af_.winfo_children()[-1], "K · M · L 자동 넓게\n끄면: K 5·7·9 × M 2·3·4·6 × L 0·1·2 (36 조합) → 실측 후보 3 개.\n"
                  "켜면: K 3·5·7·9·11 × M 1·2·3·4·6·8 × L 0·1·2·3 (100 조합 넘게, 계산 10 초 안팎) → 실측 후보 5 개.\n"
+                 "DVR 은 끄면: 구간 4·6·8·10·12 × M 2·3·4·6 (20 조합) · 켜면: 구간 3·4·5·6·8·10·12·16 × M 1·2·3·4·6·8 (48 조합).\n"
+                 "M 후보는 샘플레이트가 491.52 MSps 의 몇 배인지만큼 늘림 (같은 시간 길이).\n"
                  "계산은 측정 없이 DPD OFF I/Q 로만 · 실측이 2 번 늘어남.")
         self.dpd_rows["_odd"], self.dpd_rows["_auto"] = r, r + 1
         self.lbl_auto = ttk.Label(b, text="", style="Lab.TLabel")
         self.lbl_auto.grid(row=r + 2, column=0, columnspan=3, sticky="w")
         ttk.Label(b, text="Ctrl+Z = 이 카드 값 되돌리기", style="Unit.TLabel").grid(row=r + 3, column=0, columnspan=3, sticky="w")
         # ── ILC · 보정 기준 (따로 묶음)
+        self.wm_box = tk.Canvas(b, height=1, width=1, highlightthickness=0, bd=0)   # 보정 기준 묶음 테두리 (ILA = 점선 · DLA = 실선)
+        self.reg(self.wm_box, bg="panel")
+        self.wm_box.grid(row=37, column=0, columnspan=3, rowspan=7, sticky="nsew", pady=(8, 0))
+        self.wm_box.tk.call("lower", self.wm_box._w)         # 다른 칸 아래로 (테두리만 보이게)
+        tk.Frame(b, height=6, bd=0).grid(row=37, column=0)          # 테두리 위 여백
         hd_ = ttk.Frame(b, style="Card.TFrame")
-        hd_.grid(row=38, column=0, columnspan=3, sticky="ew", pady=(12, 0))
-        ttk.Label(hd_, text="ILC · 보정 기준", style="Lab.TLabel", font=FB).pack(side="left")
-        ln_ = tk.Frame(hd_, height=1, bd=0)
-        self.reg(ln_, bg="border")
-        ln_.pack(side="left", fill="x", expand=True, padx=(8, 0), pady=(2, 0))
-        ttk.Label(b, text="ILC · DLA 에 씀 (ILA 는 보정 기준 안 씀)",
-                  style="Hint.TLabel").grid(row=39, column=0, columnspan=3, sticky="w", pady=(0, 2))
+        hd_.grid(row=38, column=0, columnspan=3, sticky="ew", pady=(8, 0), padx=6)
+        ttk.Label(hd_, text="보정 기준 (DLA · ILC)", style="Lab.TLabel", font=FB).pack(side="left")
+        self.lbl_wm_tag = tk.Label(hd_, text="", font=("맑은 고딕", 9), bd=0, padx=6)
+        self.lbl_wm_tag.pack(side="right")
+        self.lbl_wm_use = ttk.Label(b, text="", style="Hint.TLabel", wraplength=330, justify="left")
+        self.lbl_wm_use.grid(row=39, column=0, columnspan=3, sticky="w", pady=(0, 2), padx=6)
+
+        def _wm_hint(*a_):
+            dla = self.v["method"].get() == "dla"
+            if dla:
+                t_ = "지금 학습 = DLA → 이 보정 기준 적용 · 5 카드 ILC 에도 씀"
+            else:
+                t_ = "지금 학습 = ILA → 이 설정과 상관없이 늘 시간 영역 · 5 카드 ILC 에는 그대로 씀"
+            self.lbl_wm_use.configure(text=t_)
+            T = THEME
+            self.lbl_wm_tag.configure(text="DLA 적용" if dla else "ILA 안 씀",
+                                      bg=T["sel"] if dla else T["line"], fg=T["accent"] if dla else T["dim"])
+            self._wm_dla = dla
+            self.wm_box_draw()
+        self.v["method"].trace_add("write", _wm_hint)
+        self._wm_hint = _wm_hint
+        _wm_hint()
+        self.wm_box.bind("<Configure>", lambda e: self.wm_box_draw())
         rr_ = 41
         for key, name, dflt, unit in fields["dpd"]:
-            if key in ILC_K:
+            if key in ("focus_mhz", "focus_w"):
                 self.field(b, rr_, key, name, dflt, unit)
+                for w__ in b.grid_slaves(row=rr_, column=0):
+                    w__.grid_configure(padx=(6, 8))
                 self.dpd_rows[key] = rr_
                 rr_ += 1
         if "focus_mhz" in self.v:                          # 집중 구간을 바꾸면 그래프에 바로 (측정 끝 · 중지 뒤 미리 보기)
@@ -1781,17 +1847,18 @@ class App:
         self.dpd_row_w = {k: list(b.grid_slaves(row=r_)) for k, r_ in self.dpd_rows.items()}   # 숨겼다 다시 보이려고 미리
         self.v["model"].trace_add("write", lambda *a: self.model_changed())
         self.v["method"].trace_add("write", lambda *a: self.method_compat())
-        self.v["method"].trace_add("write", lambda *a: self.model_changed())      # JSH: 'ILA+보정' 일 때만 오차 보정 칸
         self.refresh_models()
-        self.dpd_keys = [k for k, *_ in fields["dpd"]] + ["odd_only", "auto_model", "model", "method", "w_mode"]
+        self.dpd_keys = [k for k, *_ in fields["dpd"] if k not in ("ilc_iters", "ilc_gain")] + ["odd_only", "auto_model", "model", "method", "w_mode"]
         self.setup_undo(self.dpd_keys)
         self._cur_type = self.type_name()
         self.show_auto_kml()
 
         # 5 실행
-        c = self.card(inner, "실행", 5)
+        c = self.card(inner, "실행", 6)
         c.pack(fill="x", padx=(2, 6), pady=(0, 6))
+        c_run = c
         b = c.body
+        B = [b]
         b.columnconfigure(0, weight=1)
         b.columnconfigure(1, weight=1)
         self.v["run_mode"] = tk.StringVar(value=self.s.get("run_mode", "sweep"))
@@ -1817,7 +1884,7 @@ class App:
             return R[0] - 1
 
         def sec(txt):
-            f_ = ttk.Frame(b, style="Card.TFrame")
+            f_ = ttk.Frame(B[0], style="Card.TFrame")
             f_.grid(row=nxt(), column=0, columnspan=2, sticky="ew", pady=(12, 2))
             ttk.Label(f_, text=txt, style="Lab.TLabel", font=FB).pack(side="left")
             ln_ = tk.Frame(f_, height=1, bd=0)
@@ -1825,12 +1892,13 @@ class App:
             ln_.pack(side="left", fill="x", expand=True, padx=(8, 0), pady=(2, 0))
 
         def wide(btn, pady=(4, 0)):
+            # (btn 은 B[0] 안에서 만든 것)
             btn.grid(row=nxt(), column=0, columnspan=2, sticky="ew", pady=pady)
             return btn
 
         def opt(key, text, sub="", dflt=True, tip=None, label_attr=None, command=None):
             self.v[key] = tk.BooleanVar(value=bool(self.s.get(key, dflt)))
-            f_ = ttk.Frame(b, style="Card.TFrame")
+            f_ = ttk.Frame(B[0], style="Card.TFrame")
             f_.grid(row=nxt(), column=0, columnspan=2, sticky="ew", pady=(3, 0))
             tg = Toggle(f_, self.v[key], self, command=command)
             tg.pack(side="right", padx=(8, 0))
@@ -1854,52 +1922,11 @@ class App:
         self.btn_off.grid(row=r_, column=0, sticky="ew", padx=(0, 4), pady=(8, 0))
         self.btn_go = ttk.Button(b, text="▶ DPD 실행", style="Pri.TButton", command=lambda: self.start(True))
         self.btn_go.grid(row=r_, column=1, sticky="ew", pady=(8, 0))
-        self.btn_ilc = wide(ttk.Button(b, text="한계 ACLR 측정 (ILC · 모델 없이 직접 찾기)", command=lambda: self.start(True, ilc=True)))
         self.btn_cmp = wide(ttk.Button(b, text="방식 비교 실행… (같은 SG 레벨에서 여러 방식)", command=self.ask_compare))
         self.btn_stop5 = tk.Button(b, text="■ DPD 측정 중지 (Esc · 바이어스 그대로)", command=self.stop, bg="#b0bec5", fg="white",
                                    activebackground="#b71c1c", activeforeground="white", disabledforeground="#e0e0e0",
                                    relief="flat", bd=0, font=("맑은 고딕", 10, "bold"), pady=4, state="disabled", cursor="hand2")
         wide(self.btn_stop5, pady=(6, 0))
-
-        # ── ILC 결과로 모델
-        sec("ILC 결과로 모델")
-        self.btn_ilc2m = wide(ttk.Button(b, text="🧠 ILC 결과로 모델 만들기 (ILC 다시 안 돌림)",
-                                         command=lambda: self.start(True, from_ilc=True)))
-        Tip(self.btn_ilc2m, "ILC 결과로 모델 만들기\n방금 끝낸 (또는 중지한) ILC 의 가장 좋았던 입력 (표에서 ILC 줄을 골라 두면 그 줄) 을 정답으로\n"
-                            "4 카드 모델이 '원래 신호 → 그 입력' 을 배움 → 측정 → 반복 횟수만큼 다듬음.\n"
-                            "메모리에 없으면 같은 샘플 · 주파수의 최근 저장 ILC 를 보여 줌.")
-        r_ = nxt()
-        bl_ = ttk.Button(b, text="📂 저장한 ILC 고르기 …", command=self.ilc_open)
-        bl_.grid(row=r_, column=0, sticky="ew", padx=(0, 4), pady=(4, 0))
-        bs_ = ttk.Button(b, text="💾 표에서 고른 ILC 줄 저장", command=self.ilc_save_row)
-        bs_.grid(row=r_, column=1, sticky="ew", pady=(4, 0))
-        Tip(bl_, "저장한 ILC 결과 불러오기 (ILC 가 끝나거나 중지할 때마다 자동 저장)\n고르면 ILC 를 다시 안 돌리고 바로 4 카드 모델로 학습 → 측정.\n"
-                 "신호 (1 카드) 는 ILC 때와 같아야 함 (다르면 알려 줌)")
-        Tip(bs_, "표에서 ILC 줄 (예 'ILC 3') 을 골라 누르면 그 신호를 ILC 결과로 저장 - ILC 가 돌고 있는 중에도 됨.\n"
-                 "→ 끝난 뒤 [📂 저장한 ILC 고르기] 로 바로 모델 만들기.")
-        opt("ilc_time", "ILC 는 시간 영역으로", "모델이 배우기 좋은 고른 정답", False,
-            "켜면 [한계 ACLR (ILC)] 동안만 보정 기준을 시간 영역으로 → 전 대역을 고르게 고친 정답\n"
-            "(집중 구간 ILC 정답은 주파수 경계가 날카로워 GMP · 신경망이 못 따라감). 모델 다듬기는 원래 보정 기준대로")
-        opt("refine_focus", "다듬기는 집중 구간 가중 (DLA)", "모델 계수로 집중 구간을 깎음 (신경망 제외)", True,
-            "ILC 결과로 모델 만들기 뒤 다듬기 반복: 보정 기준이 집중 구간 · ACLR 채널이면 DLA 로 (가중이 들어가는 방식)")
-        opt("ilcm_widen", "학습 오차 크면 K·M·L 자동 넓힘", "−40 dB 보다 나쁘면 다시 찾음 (GMP)", True,
-            "K 5~11 × M 1~8 × L 0~3 을 측정 없이 계산으로 찾아 더 좋은 조합으로 (GMP 만).\n끝나면 로그에 '판정'")
-        opt("ilcm_dvr", "DVR 구간 수 · M 자동 찾기", "모델 = DVR 일 때 · 계산만 (JSH)", True,
-            "모델이 DVR 이면 ILC 입력을 정답으로 구간 수 6·8·10·12·16 × M 2·3·4·6·8 을 측정 없이 계산으로 비교\n"
-            "→ '인접 채널 차이 (모델 출력 − ILC 입력)' 가 가장 작은 조합으로 (0.3 dB 안이면 계수 적은 쪽).\n"
-            "지금 4 카드 값보다 0.3 dB 넘게 좋을 때만 바꿈 · 조합별 결과는 로그에 (★ 고른 것 · ◆ 지금 값).\n"
-            "4 카드 칸 값은 그대로 두니, 고른 조합을 계속 쓰려면 직접 입력")
-        opt("ilcm_lin", "긴 선형 등화 ±64 탭", "넓은 대역 리플 · 지연", True,
-            "앞뒤 ±64 탭 선형 항을 GMP 와 같이 학습 → 400 MHz 대역 안 이득 리플 · 지연까지.\n로그 '선형 진단'")
-        opt("ilcm_bandlim", "대역 제한 학습", "ILC 입력을 그다음 채널 끝까지만 · 주파수별 오차 로그", True,
-            "ILC 는 측정 범위 (채널 · 인접 · 그다음) 밖은 결과를 확인 못 해 그 대역에 성분이 쌓일 수 있음 → 모델이 못 배움.\n"
-            "켜면 ILC 입력에서 그 바깥을 걸러 내고 학습 (좋아질 때만).\n로그 '주파수별 학습 오차' 로 오차가 어디 몰렸는지 확인")
-        opt("ilcm_stab", "피크 안정화 + 부드러운 제한", "K ↓ · 정규화 ↑ 시험 · 제한을 tanh 로 (출렁임 줄임)", True,
-            "포화 근처 피크에서 모델 출력이 출렁여 최고값 제한에 잘리면 넓게 퍼지는 왜곡이 생김.\n"
-            "K 를 낮추고 · 정규화 λ 를 키운 조합을 계산으로 시험해 '인접 채널 차이' 가 가장 작은 것으로 바꾸고,\n"
-            "최고값 제한을 딱 자르지 않고 부드럽게 눌러 줌 (ILC 결과로 모델 만들기 때만).\n로그 '진폭 구간별 학습 오차' 로 피크에 오차가 몰렸는지 확인")
-        opt("ilcm_trap", "긴 메모리 (트래핑)", "0.1 · 1 · 10 µs 평균 전력 항", True,
-            "GaN 트래핑 · 열: 최근 µs 평균 전력에 따라 바뀌는 이득 · 위상 항을 GMP 에 더함.\n로그 '긴 메모리 진단' (3 dB 넘게 좋아지면 원인)")
 
         # ── 반복 · 결과
         sec("반복 · 결과")
@@ -1943,6 +1970,83 @@ class App:
             command=lambda: (self.s.__setitem__("fsw_dfl_auto", bool(self.v["fsw_dfl_auto"].get())), self.dfl_label()))
         opt("fsw_guard", "FSW 화면 놓치면 되돌리고 다시", "시작 때 FSW 설정으로 · 그 측정만 다시", True,
             "[시작] 할 때 지금 FSW 설정을 FSW 안에 저장 → 측정 실패 · Gain 급감이면 그 설정을 불러오고 그 측정만 다시 (실행마다 최대 5 번)")
+        # 5 ILC (한계 ACLR · ILC 결과로 모델) - 6 카드 (실행) 위에
+        c5 = self.card(inner, "ILC (한계 ACLR · 모델로 옮기기)", 5, "모델 없이 직접 찾기")
+        c5.pack(fill="x", padx=(2, 6), pady=(0, 6), before=c_run)
+        b5 = c5.body
+        b5.columnconfigure(0, weight=1)
+        b5.columnconfigure(1, weight=1)
+        B[0] = b5
+        R[0] = 0
+        fz_ = ttk.Frame(b5, style="Card.TFrame")
+        fz_.grid(row=nxt(), column=0, columnspan=2, sticky="ew")
+        ik_ = [f_ for f_ in fields["dpd"] if f_[0] in ("ilc_iters", "ilc_gain")]
+        for i_, (key, name, dflt, unit) in enumerate(ik_):
+            self.field(fz_, i_, key, name, dflt, unit, width=7)
+        self.dpd_keys += [k_ for k_, *_ in ik_ if k_ not in self.dpd_keys]     # 샘플 종류마다 기억 · 설정 저장에 그대로
+        ttk.Label(b5, text="보정 기준 · 집중 구간 = 4 카드 · 레벨 · 스윕 · 목표 ACLR = 6 카드 (실행)",
+                  style="Hint.TLabel").grid(row=nxt(), column=0, columnspan=2, sticky="w", pady=(2, 0))
+        self.btn_ilc = wide(ttk.Button(b5, text="한계 ACLR 측정 (ILC · 모델 없이 직접 찾기)", style="Pri.TButton",
+                                       command=lambda: self.start(True, ilc=True)), pady=(6, 0))
+        self.btn_stop_ilc = tk.Button(b5, text="■ 중지 (Esc · 지금까지 가장 좋은 것 보관)", command=self.stop, bg="#b0bec5", fg="white",
+                                      activebackground="#b71c1c", activeforeground="white", disabledforeground="#e0e0e0",
+                                      relief="flat", bd=0, font=("맑은 고딕", 10, "bold"), pady=3, state="disabled", cursor="hand2")
+        wide(self.btn_stop_ilc, pady=(4, 0))
+        # ── ILC 결과로 모델
+        sec("ILC 결과로 모델 (DPD 모델로 옮기기)")
+        self.btn_ilc2m = wide(ttk.Button(B[0], text="🧠 ILC 결과로 모델 만들기 (ILC 다시 안 돌림)",
+                                         command=lambda: self.start(True, from_ilc=True)))
+        Tip(self.btn_ilc2m, "ILC 결과로 모델 만들기\n방금 끝낸 (또는 중지한) ILC 의 가장 좋았던 입력 (표에서 ILC 줄을 골라 두면 그 줄) 을 정답으로\n"
+                            "4 카드 모델이 '원래 신호 → 그 입력' 을 배움 → 측정 → 반복 횟수만큼 다듬음.\n"
+                            "메모리에 없으면 같은 샘플 · 주파수의 최근 저장 ILC 를 보여 줌.")
+        r_ = nxt()
+        bl_ = ttk.Button(B[0], text="📂 저장한 ILC 고르기 …", command=self.ilc_open)
+        bl_.grid(row=r_, column=0, sticky="ew", padx=(0, 4), pady=(4, 0))
+        bs_ = ttk.Button(B[0], text="💾 표에서 고른 ILC 줄 저장", command=self.ilc_save_row)
+        bs_.grid(row=r_, column=1, sticky="ew", pady=(4, 0))
+        Tip(bl_, "저장한 ILC 결과 불러오기 (ILC 가 끝나거나 중지할 때마다 자동 저장)\n고르면 ILC 를 다시 안 돌리고 바로 4 카드 모델로 학습 → 측정.\n"
+                 "신호 (1 카드) 는 ILC 때와 같아야 함 (다르면 알려 줌)")
+        Tip(bs_, "표에서 ILC 줄 (예 'ILC 3') 을 골라 누르면 그 신호를 ILC 결과로 저장 - ILC 가 돌고 있는 중에도 됨.\n"
+                 "→ 끝난 뒤 [📂 저장한 ILC 고르기] 로 바로 모델 만들기.")
+        bx_ = tk.Frame(B[0], bd=0, highlightthickness=1)
+        self.reg(bx_, bg="sel", highlightbackground="accent", highlightcolor="accent")
+        bx_.grid(row=nxt(), column=0, columnspan=2, sticky="ew", pady=(5, 0))
+        bx_.columnconfigure(0, weight=1)
+        self.ilc_box_t = tk.Label(bx_, text="", anchor="w", font=("맑은 고딕", 9), bd=0)
+        self.reg(self.ilc_box_t, bg="sel", fg="accent")
+        self.ilc_box_t.grid(row=0, column=0, sticky="ew", padx=(6, 0), pady=(3, 0))
+        xb_ = tk.Label(bx_, text="✕ 비우기", font=("맑은 고딕", 9), cursor="hand2", bd=0)
+        self.reg(xb_, bg="sel", fg="dim")
+        xb_.grid(row=0, column=1, sticky="e", padx=(4, 6), pady=(3, 0))
+        xb_.bind("<Button-1>", lambda e: self.ilc_box_clear())
+        self.ilc_box_f = tk.Label(bx_, text="", anchor="w", font=("Consolas", 9), bd=0)
+        self.reg(self.ilc_box_f, bg="sel", fg="fg")
+        self.ilc_box_f.grid(row=1, column=0, columnspan=2, sticky="ew", padx=6)
+        self.ilc_box_v = tk.Label(bx_, text="", anchor="w", font=("맑은 고딕", 9, "bold"), bd=0)
+        self.reg(self.ilc_box_v, bg="sel", fg="fg")
+        self.ilc_box_v.grid(row=2, column=0, columnspan=2, sticky="ew", padx=6, pady=(0, 3))
+        self._ilc_box_tip = Tip(self.ilc_box_f, "")
+        bx_.bind("<Configure>", lambda e: self.ilc_box_update())
+        self.root.after(500, self.ilc_box_update)
+        opt("ilc_time", "ILC 는 시간 영역으로", "모델이 배우기 좋은 고른 정답", False,
+            "켜면 [한계 ACLR (ILC)] 동안만 보정 기준을 시간 영역으로 → 전 대역을 고르게 고친 정답\n"
+            "(집중 구간 ILC 정답은 주파수 경계가 날카로워 GMP · 신경망이 못 따라감). 모델 다듬기는 원래 보정 기준대로")
+        opt("refine_focus", "다듬기는 집중 구간 가중 (DLA)", "모델 계수로 집중 구간을 깎음 (신경망 제외)", True,
+            "ILC 결과로 모델 만들기 뒤 다듬기 반복: 보정 기준이 집중 구간 · ACLR 채널이면 DLA 로 (가중이 들어가는 방식)")
+        opt("ilcm_widen", "학습 오차 크면 K·M·L 자동 넓힘", "−40 dB 보다 나쁘면 다시 찾음 (GMP · DVR 구간·M)", True,
+            "GMP: K 5~11 × M 1~8 × L 0~3 · DVR: 구간 3~16 × M 1~8 을 측정 없이 계산으로 찾아 더 좋은 조합으로.\n끝나면 로그에 '판정'")
+        opt("ilcm_lin", "긴 선형 등화 ±64 탭", "넓은 대역 리플 · 지연", True,
+            "앞뒤 ±64 탭 선형 항을 GMP 와 같이 학습 → 400 MHz 대역 안 이득 리플 · 지연까지.\n로그 '선형 진단'")
+        opt("ilcm_bandlim", "대역 제한 학습", "ILC 입력을 그다음 채널 끝까지만 · 주파수별 오차 로그", True,
+            "ILC 는 측정 범위 (채널 · 인접 · 그다음) 밖은 결과를 확인 못 해 그 대역에 성분이 쌓일 수 있음 → 모델이 못 배움.\n"
+            "켜면 ILC 입력에서 그 바깥을 걸러 내고 학습 (좋아질 때만).\n로그 '주파수별 학습 오차' 로 오차가 어디 몰렸는지 확인")
+        opt("ilcm_stab", "피크 안정화 + 부드러운 제한", "K ↓ · 정규화 ↑ 시험 · 제한을 tanh 로 (출렁임 줄임)", True,
+            "포화 근처 피크에서 모델 출력이 출렁여 최고값 제한에 잘리면 넓게 퍼지는 왜곡이 생김.\n"
+            "K 를 낮추고 · 정규화 λ 를 키운 조합을 계산으로 시험해 '인접 채널 차이' 가 가장 작은 것으로 바꾸고,\n"
+            "최고값 제한을 딱 자르지 않고 부드럽게 눌러 줌 (ILC 결과로 모델 만들기 때만).\n로그 '진폭 구간별 학습 오차' 로 피크에 오차가 몰렸는지 확인")
+        opt("ilcm_trap", "긴 메모리 (트래핑)", "0.1 · 1 · 10 µs 평균 전력 항", True,
+            "GaN 트래핑 · 열: 최근 µs 평균 전력에 따라 바뀌는 이득 · 위상 항을 GMP 에 더함.\n로그 '긴 메모리 진단' (3 dB 넘게 좋아지면 원인)")
+
         self.dfl_label()
         self.run_mode_changed()
 
@@ -2108,7 +2212,7 @@ class App:
         heads = ("단계", "SG(dBm)", "Pin(dBm)", "Pout(dBm)", "기록 Pout", "Gain(dB)", "I/Q ACLR L", "I/Q ACLR U", "FSW ACLR L / U",
                  "EVM(%)", "Id(mA)", "DE(%)", "PAE(%)", "PAPR(dB)", "학습 NMSE", "시각")
         self.tree = ttk.Treeview(rec.body, columns=cols, show="headings", height=5, selectmode="browse")
-        self.tree.bind("<<TreeviewSelect>>", lambda e: self.on_pick())
+        self.tree.bind("<<TreeviewSelect>>", lambda e: (self.on_pick(), self.ilc_box_update()))
         for c_, h in zip(cols, heads):
             self.tree.heading(c_, text=h)
             self.tree.column(c_, width={"label": 80, "amod": 120}.get(c_, 72), anchor="center")
@@ -2259,10 +2363,13 @@ class App:
         if not ch:
             return
         eng.chosen = None
-        grp = [(k, self.v[k].get()) for k, v_ in zip(("K", "M", "L"), ch) if self.v[k].get() != str(v_)]
+        keys = ("K", "M", "L")
+        if ch and ch[0] == "dvr":                          # DVR 자동: (구간 수, M)
+            keys, ch = ("dvr_seg", "M"), ch[1:]
+        grp = [(k, self.v[k].get()) for k, v_ in zip(keys, ch) if self.v[k].get() != str(v_)]
         self._undo_busy = True
         try:
-            for k, v_ in zip(("K", "M", "L"), ch):
+            for k, v_ in zip(keys, ch):
                 self.v[k].set(str(v_))
                 self._undo_prev[k] = str(v_)
         finally:
@@ -2275,7 +2382,7 @@ class App:
 
     # ------------------------------------------------------------ 샘플 종류마다 4 DPD 카드 값 기억
     def type_name(self, st=None, bw=None):
-        """기억 이름 = 샘플 종류 (+ ' · 400 MHz') → 샘플 종류 × 대역마다 1 ~ 5 카드 값을 따로 기억"""
+        """기억 이름 = 샘플 종류 (+ ' · 400 MHz') → 샘플 종류 × 대역마다 1 ~ 6 카드 값을 따로 기억"""
         st = self.v["b_stype"].get() if st is None else st
         bw = (self.v["bw_mode"].get() if "bw_mode" in self.v else "100") if bw is None else bw
         return (st or "(샘플 종류 없음)") + ("" if bw == "100" else " · %s MHz" % bw)
@@ -2304,7 +2411,7 @@ class App:
         if hasattr(self, "lbl_auto"):
             self.lbl_auto.configure(text=("샘플 '%s' 설정 기억 중 · K%s M%s L%s · 반복 %s" % (
                 st, mem.get("K"), mem.get("M"), mem.get("L"), mem.get("iters"))) if mem else
-                "샘플 종류마다 설정 (1 ~ 5 카드) 을 따로 기억 - 바꾸면 그 샘플에서 쓰던 값으로")
+                "샘플 종류마다 설정 (1 ~ 6 카드) 을 따로 기억 - 바꾸면 그 샘플에서 쓰던 값으로")
 
     def apply_auto_kml(self):
         """샘플 종류를 바꾸면: 지금 값은 이전 종류에 저장 → 새 종류의 값을 칸에 (Ctrl+Z 한 번에 되돌림)"""
@@ -2327,9 +2434,6 @@ class App:
             self.s.setdefault("dpd_by_type", {})[new] = dict(self.s["dpd_by_type"].get(new) or {}, pout_strict=True, _strict2=True)
         if not mem and new in self.s.get("auto_kml", {}):              # 예전 버전 (K · M · L 만) 기억
             mem = dict(zip(("K", "M", "L"), (str(v) for v in self.s["auto_kml"][new])))
-        if mem:                                                          # Lagging · Leading 칸이 생기기 전 기억 → 빈칸 (L 과 같음)
-            mem.setdefault("L_lag", "")
-            mem.setdefault("L_lead", "")
         grp, changed = [], []
         if mem and getattr(self, "dpd_keys", None):
             self._undo_busy = True
@@ -2854,11 +2958,11 @@ class App:
         if mdl is not None and hasattr(mdl, "nseg"):
             return "%s · 구간%d M%d" % (meth, mdl.nseg, mdl.M)
         if mdl is not None:
-            return "%s · K%d M%d %s" % (meth, mdl.K, mdl.M, mdl.lag_text() if hasattr(mdl, "lag_text") else "L%d" % mdl.L)
+            return "%s · K%d M%d L%d" % (meth, mdl.K, mdl.M, mdl.L)
         if m in ("nn", "pnn", "tnn"):
             return "%s · M%s H%s" % (meth, q.get("M"), q.get("nn_hidden"))
         if m == "dvr":
-            return "%s · 구간%s M%s" % (meth, q.get("dvr_seg"), q.get("M"))
+            return "%s · 구간%s M%s%s" % (meth, q.get("dvr_seg"), q.get("M"), " (자동)" if q.get("auto_model") else "")
         return "%s · K%s M%s L%s%s" % (meth, q.get("K"), q.get("M"), q.get("L"),
                                        " (자동)" if q.get("auto_model") and m == "gmp" else "")
 
@@ -2923,12 +3027,9 @@ class App:
             tip = "PyTorch 2층 신경망 · " + (("torch 폴더: %s" % self.s["torch_dir"]) if self.s.get("torch_dir")
                                               else "torch 폴더 안 정함") + " · 못 읽으면 numpy 신경망으로 대신"
         self.lbl_model.configure(text=tip)
-        meth_ = self.v["method"].get() if "method" in self.v else "ila"
-        for key in list(self.MODEL_ROWS) + [k_ for k_ in self.METHOD_ROWS if k_ not in self.MODEL_ROWS]:
-            models = self.MODEL_ROWS.get(key)
-            show = (models is None or m in models) and (key not in self.METHOD_ROWS or meth_ in self.METHOD_ROWS[key])
+        for key, models in self.MODEL_ROWS.items():
             for w in self.dpd_row_w.get(key, ()):
-                if show:
+                if m in models:
                     w.grid()
                 else:
                     w.grid_remove()
@@ -2988,7 +3089,6 @@ class App:
             else:
                 out.append(("%s:ila" % k, "%s-ILA" % names[k]))
                 out.append(("%s:dla" % k, "%s-DLA" % names[k]))
-                out.append(("%s:ilaec" % k, "%s-ILA+보정" % names[k]))
             out.append(("%s:ilcm" % k, "%s-ILC→모델" % names[k]))
         return out
 
@@ -3101,13 +3201,13 @@ class App:
             val = self.v[key].get().strip()
             if key in ("focus_mhz", "pout_band"):
                 p[key] = val
-            elif key in ("L_lag", "L_lead"):              # 빈칸 = None (L 과 같음)
-                p[key] = max(0, int(fnum(val, 0))) if val else None
             elif key == "fsw_rbw_khz":
                 p[key] = max(fnum(val, 0.0), 0.0) if val else 0.0
             elif key in ("smw_host", "fsw_host", "mod", "fsw_att_db", "fsw_ref_dbm"):
                 p[key] = val
-            elif key in ("n_sym", "K", "M", "L", "ec_iters", "retry_off", "iters", "n_fit", "nn_hidden", "nn_epochs", "ilc_iters", "dvr_seg", "iq_avg"):
+            elif key == "fit_us":
+                p[key] = max(fnum(val, 0.0), 0.0) if val else 0.0
+            elif key in ("n_sym", "K", "M", "L", "iters", "n_fit", "fit_segs", "nn_hidden", "nn_epochs", "ilc_iters", "dvr_seg", "iq_avg"):
                 p[key] = int(fnum(val, float(dflt)))
             else:
                 p[key] = fnum(val, float(dflt))
@@ -3117,7 +3217,6 @@ class App:
         p["auto_model"] = bool(self.v["auto_model"].get())
         p["auto_wide"] = bool(self.v["auto_wide"].get())
         p["ilcm_widen"] = bool(self.v["ilcm_widen"].get())
-        p["ilcm_dvr"] = bool(self.v["ilcm_dvr"].get())          # JSH
         p["ilcm_lin"] = bool(self.v["ilcm_lin"].get())
         p["ilcm_trap"] = bool(self.v["ilcm_trap"].get())
         p["ilcm_stab"] = bool(self.v["ilcm_stab"].get())
@@ -3214,6 +3313,10 @@ class App:
 
     # ------------------------------------------------------------ 실행
     def busy(self, on):
+        try:
+            self.root.after(300, self.ilc_box_update)
+        except Exception:
+            pass
         self.btn_go.configure(state="disabled" if on else "normal")
         self.btn_off.configure(state="disabled" if on else "normal")
         self.btn_ilc.configure(state="disabled" if on else "normal")
@@ -3222,8 +3325,9 @@ class App:
         for b_ in ("btn_send", "btn_recheck", "btn_savefinal", "btn_more", "btn_ilc2m"):
             if hasattr(self, b_):
                 getattr(self, b_).configure(state="disabled" if on else "normal")
-        if hasattr(self, "btn_stop5"):
-            self.btn_stop5.configure(state="normal" if on else "disabled", bg="#c62828" if on else "#b0bec5")
+        for b_ in (getattr(self, "btn_stop5", None), getattr(self, "btn_stop_ilc", None)):
+            if b_ is not None:
+                b_.configure(state="normal" if on else "disabled", bg="#c62828" if on else "#b0bec5")
         if hasattr(self, "btn_stop"):
             self.btn_stop.configure(state="normal" if on else "disabled")
         gb = getattr(self, "g_btn", None) if getattr(self, "gwin", None) is not None else None
@@ -3244,7 +3348,6 @@ class App:
             self.engine = E.Engine(p, log=lambda s: self.q.put(("log", s)), on_result=lambda r: self.q.put(("res", r)),
                                    on_progress=lambda s: self.q.put(("prog", s)), dc_reader=self.read_dc)
             self.engine.on_lock = lambda sg: self.q.put(("sglock", sg))
-            self.engine.on_ilc = lambda e, partial: self.ilc_autosave(e, e.p, partial)    # JSH: ILC 결과마다 .npz 저장
             ks = getattr(self, "_keep_sig", None)
             self._keep_sig = None
             if ks is not None and all(ks[1].get(k) == p.get(k) for k in self.SIG_KEYS):
@@ -3252,7 +3355,7 @@ class App:
                 self.engine.model = self.engine.make_model()   # 신호만 이어 쓰고 모델은 새로 (예전: 모델이 없어 'NoneType … fit' 오류)
         else:
             sig_keys = self.SIG_KEYS
-            mdl_keys = ("K", "M", "L", "L_lag", "L_lead", "odd_only", "lam", "model", "method", "nn_hidden", "nn_epochs", "dvr_seg", "torch_dir")
+            mdl_keys = ("K", "M", "L", "odd_only", "lam", "model", "method", "nn_hidden", "nn_epochs", "dvr_seg", "torch_dir")
             if any(self.engine.p.get(k) != p[k] for k in sig_keys):
                 self.engine.sig = None            # 신호가 바뀌면 다시 만들기 (모델도 같이)
                 self.engine.p.update(p)
@@ -3314,7 +3417,6 @@ class App:
         except ValueError as e:
             messagebox.showwarning(APP, str(e))
             return
-        self.ilc_ctx()                                     # JSH: ILC 파일 이름용 샘플 종류 · 신호 파일 (화면 스레드에서 읽어 둠)
         self.log("손실: In %.2f · Out %.2f dB%s%s" % (
             p["in_loss_db"], p["out_loss_db"],
             (" (%s)" % self.lbl_loss.cget("text").split("(")[-1].rstrip(")")) if self.v["bench_loss"].get() else " (칸 값)",
@@ -3346,6 +3448,8 @@ class App:
             # 이어서: 끝난 (또는 중지한) 실행의 엔진 · 계수 · 입력을 그대로 (표 · 그래프 · 기록도 이어 붙임)
             pend = getattr(self, "_ilc_pending", None) if from_ilc else None
             keep_ = False
+            if from_ilc and pend is not None and self._tree_ilc_sel() is not None:
+                pend = None                                # 표에서 ILC 줄을 골랐으면 그 줄이 먼저 (5 카드 '쓸 ILC' 칸과 같음)
             if from_ilc and pend is None:
                 pk_ = self.ilc_from_table(p)                # 표에서 고른 ILC 줄 (또는 중지한 ILC 의 가장 좋은 줄) 의 신호
                 if pk_ is not None:
@@ -3361,8 +3465,7 @@ class App:
                 src = self.engine if self.engine is not None else getattr(self, "_last_eng", None)
                 eng = src if src is self.engine else self._live_engine(src)
                 eng._resume = pend
-            elif pend is not None:                         # 저장한 ILC 결과를 불러와서 → 그걸로 모델 만들기
-                self._ilc_pending = None
+            elif pend is not None:                         # 저장한 ILC 결과를 불러와서 → 그걸로 모델 만들기 (고른 파일은 ✕ 비우기 전까지 유지)
                 eng = self.get_engine(p)
                 eng._resume = pend
             else:
@@ -3379,8 +3482,8 @@ class App:
                 if k in p:
                     eng.p[k] = p[k]
             if from_ilc:                                   # 모델은 지금 4 카드 값으로
-                for k in ("model", "method", "K", "M", "L", "L_lag", "L_lead", "odd_only", "lam", "n_fit", "iters", "nn_hidden", "nn_epochs", "dvr_seg", "torch_dir",
-                          "ilcm_widen", "ilcm_dvr", "ilcm_lin", "ilcm_trap", "ilcm_stab", "ilcm_bandlim", "refine_focus", "ilc_time", "fsw_guard"):
+                for k in ("model", "method", "K", "M", "L", "odd_only", "lam", "n_fit", "fit_us", "fit_segs", "iters", "nn_hidden", "nn_epochs", "dvr_seg", "torch_dir",
+                          "ilcm_widen", "ilcm_lin", "ilcm_trap", "ilcm_stab", "ilcm_bandlim", "refine_focus", "ilc_time", "fsw_guard"):
                     if k in p:
                         eng.p[k] = p[k]
             self.cmp_mode = False
@@ -3475,7 +3578,8 @@ class App:
                     eng.run_compare(compare[0], compare[1])
                     self.q.put(("cmp", (list(eng.compare), getattr(eng, "compare_off", None))))
                 elif ilc:
-                    eng.run_ilc(levels if sweep else None)        # .npz 저장은 ILC 가 끝날 때 엔진이 알려 줌 (on_ilc)
+                    eng.run_ilc(levels if sweep else None)
+                    self.ilc_autosave(eng, p)
                 elif sweep:
                     eng.run_sweep(levels, pstop if pstop == pstop else None)
                 else:
@@ -3484,7 +3588,7 @@ class App:
             except E.Stop:
                 self.q.put(("log", "■ 중지됨"))
                 if ilc and not more and (getattr(eng, "_resume", None) or {}).get("stopped"):
-                    # (JSH: 중지한 ILC 의 .npz 저장은 엔진이 on_ilc 로 이미 함 → 여기서 또 저장 안 함)
+                    self.ilc_autosave(eng, p)              # 중지한 ILC 도 그때까지 가장 좋은 것을 저장
                     self.q.put(("log", "  → [🧠 ILC 결과로 모델 만들기] = 지금까지 가장 좋은 ILC · 표에서 ILC 줄을 고르면 그 줄 신호로"))
             except Exception as e:
                 if not eng.stop:                         # 중지로 끊긴 건 오류로 안 띄움
@@ -5298,37 +5402,25 @@ class App:
         pd, sg, ghz, y = st
         return eng, r, E.np.asarray(pd, dtype=complex), sg, ghz, E.np.asarray(y, dtype=complex)
 
-    def ilc_ctx(self):
-        """JSH: 파일 이름 · 정보에 쓸 샘플 종류 · 신호 파일 (화면 칸은 화면 스레드에서만 읽음 → 실행 시작 때 담아 둠)"""
-        try:
-            stype = (self.v["b_stype"].get().strip() if "b_stype" in self.v else "") or "샘플"
-            sig = self.v["wv_path"].get() if "wv_path" in self.v else ""
-            self._ilc_ctx_v = (stype, sig)
-        except Exception:
-            pass
-        return getattr(self, "_ilc_ctx_v", ("샘플", ""))
-
-    def ilc_autosave(self, eng, p, partial=False):
-        """ILC 가 끝나면 (또는 중지하면 그때까지 최고) 결과를 파일로 (작업 스레드에서) → 📂 저장한 ILC 로 나중에 바로 모델 학습"""
+    def ilc_autosave(self, eng, p):
+        """ILC 가 끝나면 결과를 파일로 (작업 스레드에서) → 📂 저장한 ILC 로 나중에 바로 모델 학습"""
         try:
             st = getattr(eng, "_resume", None)
             if not st or st.get("kind") != "ilc":
                 return
             os.makedirs(ILC_DIR, exist_ok=True)
             r = st["best"][1] if isinstance(st["best"][1], dict) else {}
-            stype, sig_path = getattr(self, "_ilc_ctx_v", None) or ("샘플", "")
+            stype = (self.v["b_stype"].get().strip() if "b_stype" in self.v else "") or "샘플"
             stype = re.sub(r'[\\/:*?"<>|]', "_", stype)[:40]
-            name = "ILC_%s_%.3fGHz_%.1fdBc_Pout%.2f_%s%s.npz" % (stype, p["freq_ghz"], st["best"][0], float(r.get("pout", float("nan"))),
-                                                                   time.strftime("%Y%m%d_%H%M%S"), "_중지" if partial else "")
-            meta = dict(when=time.strftime("%Y-%m-%d %H:%M"), stype=stype, freq=float(p["freq_ghz"]), sg=float(st["sg"]),
-                        best=float(st["best"][0]), pout=(float(r["pout"]) if isinstance(r.get("pout"), (int, float)) else None),
-                        r={k: (float(r[k]) if isinstance(r[k], (int, float)) else r[k]) for k in ("aclr_l", "aclr_u", "pout", "label") if k in r},
-                        sig=sig_path, ver=VERSION, partial=bool(partial), iters=int(st.get("k") or 0),
+            name = "ILC_%s_%.3fGHz_%.1fdBc_Pout%.2f_%s.npz" % (stype, p["freq_ghz"], st["best"][0], r.get("pout", float("nan")),
+                                                                 time.strftime("%Y%m%d_%H%M%S"))
+            meta = dict(when=time.strftime("%Y-%m-%d %H:%M"), stype=stype, freq=p["freq_ghz"], sg=st["sg"], best=st["best"][0],
+                        pout=r.get("pout"), r={k: r.get(k) for k in ("aclr_l", "aclr_u", "pout", "label") if k in r},
+                        sig=self.v["wv_path"].get() if "wv_path" in self.v else "", ver=VERSION,
                         w_mode=st.get("w_mode_used") or p.get("w_mode"), focus_mhz=p.get("focus_mhz"), focus_w=p.get("focus_w"))
             path = eng.ilc_save(os.path.join(ILC_DIR, name), meta)
             if path:
-                self.q.put(("log", "  💾 ILC 결과 저장%s: %s\n     폴더: %s (📂 저장한 ILC 로 나중에 바로 모델 학습)"
-                            % (" (중지 · 그때까지 최고)" if partial else "", name, ILC_DIR)))
+                self.q.put(("log", "  💾 ILC 결과 저장: %s (📂 저장한 ILC 로 나중에 바로 모델 학습)" % name))
             fs = sorted((f for f in os.listdir(ILC_DIR) if f.lower().endswith(".npz")),
                         key=lambda f: os.path.getmtime(os.path.join(ILC_DIR, f)))
             for f in fs[:-60]:
@@ -5377,8 +5469,96 @@ class App:
         except Exception as e:
             messagebox.showwarning(APP, "저장 실패: %s" % e, parent=self.root)
             return
-        self.log("💾 '%s' (ACLR %.1f / %.1f dBc) 신호를 ILC 결과로 저장: %s  → 끝난 뒤 [📂 저장한 ILC 고르기] 로 모델 만들기"
+        self.log("💾 '%s' (ACLR %.1f / %.1f dBc) 신호를 ILC 결과로 저장: %s  → 5 카드 '쓸 ILC' 칸에 표시"
                  % (r["label"], r["aclr_l"], r["aclr_u"], name))
+        try:
+            self._ilc_pending = E.Engine.ilc_load(os.path.join(ILC_DIR, name))
+            self.tree.selection_remove(self.tree.selection())
+        except Exception:
+            pass
+        self.ilc_box_update()
+
+    def _tree_ilc_sel(self):
+        """표에서 고른 줄이 ILC 줄이면 그 번호 (아니면 None)"""
+        try:
+            sel = self.tree.selection()
+            if sel:
+                j = int(sel[0])
+                if j < len(self.results) and self.results[j].get("kind") == "ilc":
+                    return j
+        except Exception:
+            pass
+        return None
+
+    def wm_box_draw(self):
+        """4 카드 보정 기준 묶음 테두리: ILA = 점선 (안 씀) · DLA = 실선 (적용)"""
+        cv = getattr(self, "wm_box", None)
+        if cv is None:
+            return
+        try:
+            T = THEME
+            cv.configure(bg=T["panel"])
+            cv.delete("all")
+            w, h = cv.winfo_width(), cv.winfo_height()
+            if w < 10 or h < 10:
+                return
+            dla = getattr(self, "_wm_dla", False)
+            cv.create_rectangle(1, 1, w - 2, h - 2, outline=T["accent"] if dla else T["dim"],
+                                dash=() if dla else (5, 3), width=1)
+        except tk.TclError:
+            pass
+
+    def ilc_box_clear(self):
+        self._ilc_pending = None
+        try:
+            if self._tree_ilc_sel() is not None:
+                self.tree.selection_remove(self.tree.selection())
+        except Exception:
+            pass
+        self.ilc_box_update()
+
+    def ilc_box_update(self):
+        """5 카드 '쓸 ILC' 칸: [ILC 결과로 모델 만들기] 를 누르면 쓰일 ILC (표 선택 > 고른 파일 > 방금 돌린 ILC > 최근 저장)"""
+        if not hasattr(self, "ilc_box_t"):
+            return
+        WM = {"time": "시간 영역", "focus": "주파수·집중", "aclr": "주파수·ACLR"}
+        head, name, vals, full = "쓸 ILC", "", "", ""
+        try:
+            j = self._tree_ilc_sel()
+            pend = getattr(self, "_ilc_pending", None)
+            src = self.engine if (self.engine is not None and getattr(self.engine, "_resume", None)) else getattr(self, "_last_eng", None)
+            st = (getattr(src, "_resume", None) or {}) if src is not None else {}
+            if j is not None:
+                r = self.results[j]
+                head, name = "쓸 ILC · 표에서 고른 줄", r["label"]
+                vals = "ACLR %.1f dBc   Pout %.2f   %.3f GHz" % (aw(r), r.get("pout", float("nan")), r.get("ghz", fnum(self.v["freq_ghz"].get(), 0)))
+            elif pend is not None:
+                m = pend.get("meta") or {}
+                full = os.path.basename(pend.get("path") or "")
+                head, name = "쓸 ILC · 저장한 파일", full
+                vals = "ACLR %.1f dBc   Pout %s   %s GHz   %s" % (pend["best"][0],
+                       ("%.2f" % m["pout"]) if isinstance(m.get("pout"), (int, float)) else "?",
+                       ("%.3f" % m["freq"]) if isinstance(m.get("freq"), (int, float)) else "?", WM.get(m.get("w_mode"), m.get("w_mode") or ""))
+            elif st.get("kind") == "ilc":
+                b_ = st.get("best") or (float("nan"), {})
+                r = b_[1] if isinstance(b_[1], dict) else {}
+                head = "쓸 ILC · 방금 돌린 ILC (가장 좋은 것)"
+                name = "%s%s" % (r.get("label", "ILC"), " (중지)" if st.get("stopped") else "")
+                vals = "ACLR %.1f dBc   Pout %.2f   %s" % (b_[0], r.get("pout", float("nan")), WM.get(st.get("w_mode_used"), ""))
+            else:
+                head, name, vals = "쓸 ILC 없음", "ILC 를 돌리거나 [저장한 ILC 고르기]", "(없으면 누를 때 같은 샘플 · 주파수 최근 저장 파일을 보여 줌)"
+        except Exception as e:
+            head, name, vals = "쓸 ILC", "?", str(e)[:60]
+        w_ = max(120, self.ilc_box_f.winfo_width())
+        nch = max(16, int(w_ / 7.6))                       # Consolas 9 ≈ 7 px (여유)
+        shown = name if len(name) <= nch else name[:nch - 1] + "…"
+        self.ilc_box_t.configure(text=head)
+        self.ilc_box_f.configure(text=shown)
+        self.ilc_box_v.configure(text=vals)
+        try:
+            self._ilc_box_tip.text = full or name
+        except Exception:
+            pass
 
     def ilc_from_table(self, p):
         """ILC 결과로 모델 만들기에 쓸 표의 ILC 줄:
@@ -5471,7 +5651,7 @@ class App:
         f = ttk.Frame(top, padding=14)
         f.pack(fill="both", expand=True)
         ttk.Label(f, text="저장한 ILC 결과", font=("맑은 고딕", 12, "bold")).pack(anchor="w")
-        ttk.Label(f, text="고르면 지금 4 카드 모델로 바로 학습 → 측정 (ILC 다시 안 돌림) · 1 카드 신호는 ILC 때와 같아야 함 · 두 번 클릭 = 바로 선택",
+        ttk.Label(f, text="고르면 5 카드 '쓸 ILC' 칸에 표시 → [ILC 결과로 모델 만들기] 로 학습 · 1 카드 신호는 ILC 때와 같아야 함 · 두 번 클릭 = 고르기",
                   font=("맑은 고딕", 10)).pack(anchor="w", pady=(2, 8))
         stl = ttk.Style(top)
         stl.configure("Ilc.Treeview", font=("맑은 고딕", 11), rowheight=28)
@@ -5535,7 +5715,7 @@ class App:
         tv.bind("<Return>", ok)
         bb = ttk.Frame(f)
         bb.pack(fill="x", pady=(10, 0))
-        ttk.Button(bb, text="✔ 이걸로 모델 만들기", command=ok, style="Pri.TButton").pack(side="left")
+        ttk.Button(bb, text="✔ 이걸로 고르기", command=ok, style="Pri.TButton").pack(side="left")
         ttk.Button(bb, text="다른 파일…", command=other).pack(side="left", padx=(6, 0))
         ttk.Button(bb, text="📁 폴더 열기", command=opendir).pack(side="left", padx=(6, 0))
         ttk.Button(bb, text="취소", command=top.destroy).pack(side="right")
@@ -5566,8 +5746,12 @@ class App:
                % (os.path.basename(path), m.get("stype", "?"), m.get("freq", "?"), st["best"][0], st["sg"],
                   ("%.2f dBm" % m["pout"]) if isinstance(m.get("pout"), (int, float)) else "?", m.get("when", ""),
                   self.model_text(self.params(), None) if hasattr(self, "model_text") else ""))
-        self.log("📂 ILC 결과 불러옴: %s (ILC 최고 %.1f dBc)" % (os.path.basename(path), st["best"][0]))
-        self.start(True, from_ilc=True)                # 고르기 창에서 [이걸로 모델 만들기] 를 눌렀으니 바로
+        self.log("📂 쓸 ILC: %s (ILC 최고 %.1f dBc) → [ILC 결과로 모델 만들기] 를 누르면 이걸로" % (os.path.basename(path), st["best"][0]))
+        try:
+            self.tree.selection_remove(self.tree.selection())   # 표 선택이 먼저라 비워 둠 (고른 파일이 쓰이게)
+        except Exception:
+            pass
+        self.ilc_box_update()
 
     def _live_engine(self, src):
         """중지된 실행의 엔진이면 새로 연결한 엔진으로 (신호 · 보관 신호는 넘김)"""
@@ -5753,7 +5937,7 @@ class App:
         top.grab_set()
 
     def setting_rows(self):
-        """1 ~ 5 카드의 설정 칸 → [(카드 번호, 카드 이름, 키, 이름, {값: 버튼 글자})] (화면 순서)"""
+        """1 ~ 6 카드의 설정 칸 → [(카드 번호, 카드 이름, 키, 이름, {값: 버튼 글자})] (화면 순서)"""
         names = {str(var): k for k, var in self.v.items()}
         out, seen = [], set()
         for num, (title, body) in sorted(getattr(self, "cards_num", {}).items()):
@@ -5809,7 +5993,7 @@ class App:
         return out
 
     def save_settings_xlsx(self, path, eng, r, lvl, ghz, wv_path):
-        """입력 .wv 와 같이: 그 측정 때 1 ~ 5 카드 설정 · 자동으로 정해진 값 · 결과 → 엑셀 (다음에 같은 조건으로 돌릴 때 참고)"""
+        """입력 .wv 와 같이: 그 측정 때 1 ~ 6 카드 설정 · 자동으로 정해진 값 · 결과 → 엑셀 (다음에 같은 조건으로 돌릴 때 참고)"""
         import openpyxl
         from openpyxl.styles import Font, PatternFill, Alignment
         wb = openpyxl.Workbook()
@@ -5902,7 +6086,7 @@ class App:
                 px = os.path.splitext(p)[0] + "_설정.xlsx"
                 try:
                     self.save_settings_xlsx(px, eng, r, lvl, ghz, p)
-                    self.log("저장: %s  (그 측정 때 1 ~ 5 카드 설정 · 자동 값 · 결과)" % px)
+                    self.log("저장: %s  (그 측정 때 1 ~ 6 카드 설정 · 자동 값 · 결과)" % px)
                 except PermissionError:
                     self.log("⚠ 설정 엑셀이 열려 있어 저장 못 함: %s" % px)
                 except Exception as e:
@@ -5992,9 +6176,7 @@ class App:
         if p:
             names = m.term_names()
             with open(p, "w", encoding="utf-8-sig") as f:
-                f.write("# K=%d M=%d L=%d%s odd=%s lambda=%g\nterm,re,im\n" % (m.K, m.M, m.L,
-                        (" lag=%d lead=%d" % (m.lag, m.lead)) if getattr(m, "lag", m.L) != m.L or getattr(m, "lead", m.L) != m.L else "",
-                        m.odd, m.lam))
+                f.write("# K=%d M=%d L=%d odd=%s lambda=%g\nterm,re,im\n" % (m.K, m.M, m.L, m.odd, m.lam))
                 for nm, c in zip(names, m.w):
                     f.write("%s,%.9e,%.9e\n" % (nm, c.real, c.imag))
             self.remember_dir(p)
@@ -6019,10 +6201,7 @@ class App:
         p = self.params()
         ws.append(["PA DPD Tester %s" % VERSION, time.strftime("%Y-%m-%d %H:%M")])
         ws.append(["신호", "NR 100 MHz 1C · %s · %d 심볼 · ×%d · CFR %s %.1f dB" % (p["mod"], p["n_sym"], p["os"], "ON" if p["cfr_on"] else "OFF", p["papr_db"])])
-        ws.append(["DPD", "K=%d M=%d L=%d%s %s λ=%g μ=%g 반복 %d" % (p["K"], p["M"], p["L"],
-                   "".join(" %s=%d" % (n_, p[k_]) for k_, n_ in (("L_lag", "Lag"), ("L_lead", "Lead")) if p.get(k_) is not None),
-                   "홀수만" if p["odd_only"] else "", p["lam"], p["mu"], p["iters"])
-                  + ((" · ILA+보정: 오차 보정 %d 번 · μ %g" % (p.get("ec_iters", 0), p.get("ec_mu", 0))) if p.get("method") == "ilaec" else "")])
+        ws.append(["DPD", "K=%d M=%d L=%d %s λ=%g μ=%g 반복 %d" % (p["K"], p["M"], p["L"], "홀수만" if p["odd_only"] else "", p["lam"], p["mu"], p["iters"])])
         ws.append(["RF", "%.4f GHz · 입력 손실 %.2f dB · 출력 손실 %.2f dB · 보정 %.2f dB" % (p["freq_ghz"], p["in_loss_db"], p["out_loss_db"], p["cal_db"])])
         bias_ = getattr(self, "run_bias", None) or self.get_bias()
         br = self.bias_rows(bias_)
