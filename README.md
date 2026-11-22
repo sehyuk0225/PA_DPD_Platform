@@ -2,15 +2,22 @@
 
 PA Bench Monitor Site2 기반 PAM 자동 측정 · DPD 플랫폼.
 
-- 원본: [jaybaek-git/Works](https://github.com/jaybaek-git/Works) (rto-current-meter 브랜치) - 지금 기준 v1.4.42 (commit 23adde1)
+- 원본: [jaybaek-git/Works](https://github.com/jaybaek-git/Works) (rto-current-meter 브랜치) - 지금 기준 v1.4.53 (commit 0c18706)
 - `PA-Bench-Monitor-Site2/PA-Bench-Monitor-Site2_v1.4.15_AnalyzerLink.zip` : 원본 zip 그대로
-- `PA-Bench-Monitor-Site2/PA-Bench-Monitor-Site2_v1.4.42.4_AnalyzerLink_JSH.zip` : **v1.4.42.4_JSH** (최신) (로그 자동 저장 · 중요한 줄 【코드】 표시 · 끝에 요약)
+- `PA-Bench-Monitor-Site2/PA-Bench-Monitor-Site2_v1.4.53_AnalyzerLink_JSH.zip` : **v1.4.53_JSH** (최신) (원본 v1.4.53 + 녹색 테마 + ILC 신호 · 평균 I/Q `.bin` 저장 → 프로그램 폴더 `Signals\`)
+- `PA-Bench-Monitor-Site2/PA-Bench-Monitor-Site2_v1.4.42.4_AnalyzerLink_JSH.zip` : v1.4.42.4_JSH (원본 v1.4.42 + 예전 JSH 기능 전부) (로그 자동 저장 · 중요한 줄 【코드】 표시 · 끝에 요약)
 - `PA-Bench-Monitor-Site2/PA-Bench-Monitor-Site2_v1.4.42.3_AnalyzerLink_JSH.zip` : v1.4.42.3_JSH (v1.4.42.2_JSH + 관측 대역 스위치 세 개를 5 카드 한 묶음으로 · 로그 확인)
 - `PA-Bench-Monitor-Site2/PA-Bench-Monitor-Site2_v1.4.42.2_AnalyzerLink_JSH.zip` : v1.4.42.2_JSH (원본 v1.4.42 + JSH 수정 · FSW 관측 대역 밖 안 고침)
 - 예전 JSH 버전 zip 도 같은 폴더에 그대로 (`…v1.4.24_…_JSH.zip` · `…v1.4.24.1_…_JSH.zip` · `…v1.4.24.2_…_JSH.zip` · `…v1.4.24.3_…_JSH.zip` = 원본 v1.4.24 기준 · `…v1.4.29.1_…_JSH.zip` = 원본 v1.4.29 기준 · `…v1.4.34.1_…_JSH.zip` = 원본 v1.4.34 기준 · `…v1.4.36_…_JSH.zip` · `…v1.4.36.1_…_JSH.zip` = 원본 v1.4.36 기준 · `…v1.4.42_…_JSH.zip` · `…v1.4.42.1_…_JSH.zip` = 원본 v1.4.42 기준) - 새 버전은 지우지 않고 번호만 올려 추가
-- `PA-Bench-Monitor-Site2/source/` : 지금 소스 = v1.4.42.4_JSH (수정은 여기서)
+- `PA-Bench-Monitor-Site2/source/` : 지금 소스 = v1.4.53_JSH (수정은 여기서)
 
-## JSH 수정 내역 — v1.4.42.4_JSH (원본 v1.4.42 + JSH 수정)
+## JSH 수정 내역 — v1.4.53_JSH (원본 v1.4.53 + 두 가지만)
+- 위쪽 패널 녹색 테마 #00704A · EXE 이름 끝 `_JSH` (`pa_bench_monitor_site2.py` 에서만 칠함)
+- ILC 할 때 반복마다 **보낸 ILC 신호** · **받아 주기마다 평균한 I/Q** 를 `.bin` (I, Q 번갈아 float32 LE, 헤더 없음) 으로
+  프로그램 (EXE) 폴더 안 `Signals\ILC_날짜_시각_SG○○dBm\` 에 자동 저장 (`00_원신호` · `00_DPD_OFF_평균IQ` · `ILC01_ILC신호` · `ILC01_평균IQ` … · `최고_ILC신호` · `최고_평균IQ` · `_형식.txt`), 못 쓰면 `%APPDATA%\PADPDTester\Signals\` (`dpd_engine.py` 의 `signals_dir` · `sig_bin_*`)
+- 아래는 예전 JSH 판 (v1.4.42.4_JSH 까지) 내역 - v1.4.53_JSH 에는 없음
+
+## (예전) JSH 수정 내역 — v1.4.42.4_JSH (원본 v1.4.42 + JSH 수정)
 - DPD 4 카드: GMP **Lagging 항 (l+)** · **Leading 항 (l−)** 수를 따로 설정 (빈칸 = L 과 같음 → 원본과 똑같이 동작)
   - 'K · M · L 자동' · 'ILC→모델 K·M·L 넓힘' 이 고른 모델은 L 하나로 앞뒤 같게
 

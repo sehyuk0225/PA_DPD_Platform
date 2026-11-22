@@ -1531,6 +1531,7 @@ class Engine:
                 self._resume = dict(kind="ilc", sg=sg_b, sg_end=self.p["sg_dbm"], u=best[2], y_al=best[3], gk=gk, best=best, k=k,
                                     label_pre=lp, step=stp, w_mode_used=self.w_mode(), stopped=True)
                 self._ilc_u = best[2]
+                self.sig_bin_best(best)                         # JSH
                 self.log("  ■ ILC 중지 → 지금까지 가장 좋았던 것 (%.1f dBc) 을 'ILC 결과로 모델 만들기' 에 씀" % best[0])
             raise
         finally:
@@ -1551,6 +1552,9 @@ class Engine:
         if resume:                                         # 이어서: 앞 ILC 의 가장 좋았던 입력 · 이득에서 계속
             u, y_al, gk, best, k0 = resume["u"].copy(), resume["y_al"], resume["gk"], resume["best"], resume["k"]
             n = int(resume["n"])
+        self.sig_bin_start(label_pre)                      # JSH: Signals\ILC_… 폴더
+        if not resume:
+            self.sig_bin(y_al, "00_DPD_OFF_평균IQ")
         for k in range(k0 + 1, k0 + n + 1):
             self.check()
             self.log("▶ %sILC %d / %d (한계 ACLR 찾기 · 이득 %.2f)" % (label_pre, k, k0 + n, gk))
@@ -1563,6 +1567,8 @@ class Engine:
                 self.log("  최고값 제한 (+%.1f dB) 에 걸린 샘플 %d 개 (많으면 ILC 가 못 내려감 → 4 카드 최고값 제한 ↑)" % (p["peak_lim_db"], n_clip))
             nm = 10 * np.log10(np.mean(np.abs(e) ** 2) / np.mean(np.abs(x) ** 2))
             y_al, r = self.measure(u, "%sILC %d" % (label_pre, k), k, nm, step, kind="ilc")
+            self.sig_bin(u, "ILC%02d_ILC신호" % k)             # JSH: 이번에 보낸 ILC 신호
+            self.sig_bin(y_al, "ILC%02d_평균IQ" % k)           # JSH: 이번에 받아 평균한 I/Q
             sc = C.aclr_worst(r)
             fd = self.focus_dbc(y_al)
             if fd is not None:                         # 집중 구간을 정했으면 그 구간 전력으로 좋고 나쁨을 판단
@@ -1581,6 +1587,7 @@ class Engine:
             if r.get("clipped"):
                 self.log("  ⚠ SG 레벨이 SG 최대에 걸림 → ILC 가 입력을 더 못 키움 (2 카드 SG 최대 확인)")
         self._ilc_u = best[2]
+        self.sig_bin_best(best)                             # JSH
         sg_b = best[1].get("base_sg") if isinstance(best[1], dict) else None
         sg_b = float(sg_b) if sg_b is not None and sg_b == sg_b else self.p["sg_dbm"]      # ILC 가장 좋았던 순간의 SG
         self._resume = dict(kind="ilc", sg=sg_b, sg_end=self.p["sg_dbm"], u=best[2], y_al=best[3], gk=gk, best=best, k=k0 + n,
@@ -1682,6 +1689,76 @@ class Engine:
         finally:
             self.p["sg_dbm"] = base
         return self.results
+
+    # ---- JSH: ILC 신호 · 평균 I/Q 를 .bin 으로 (프로그램 폴더 \Signals) ----
+    @staticmethod
+    def signals_dir():
+        """프로그램 (EXE 또는 .py) 이 있는 폴더 안 Signals. 못 쓰면 %APPDATA%\\PADPDTester\\Signals"""
+        import sys
+        base = os.path.dirname(os.path.abspath(sys.executable if getattr(sys, "frozen", False) else __file__))
+        for d in (os.path.join(base, "Signals"),
+                  os.path.join(os.environ.get("APPDATA") or os.path.expanduser("~"), "PADPDTester", "Signals")):
+            try:
+                os.makedirs(d, exist_ok=True)
+                t_ = os.path.join(d, ".w")
+                open(t_, "w").close()
+                os.remove(t_)
+                return d
+            except Exception:
+                continue
+        return None
+
+    def sig_bin_start(self, label_pre=""):
+        """ILC 한 번 (한 SG 레벨) 마다 새 폴더 Signals\\ILC_날짜_시각_SG○○dBm + 원래 신호 · 형식 설명"""
+        self._sig_dir = None
+        try:
+            root = self.signals_dir()
+            if root is None:
+                self.log("  ⚠ Signals 폴더를 만들 수 없음 → .bin 저장 안 함")
+                return
+            d = os.path.join(root, "ILC_%s_SG%+.2fdBm" % (time.strftime("%Y%m%d_%H%M%S"), self.p["sg_dbm"]))
+            os.makedirs(d, exist_ok=True)
+            self._sig_dir = d
+            fs = self.sig.fs
+            with open(os.path.join(d, "_형식.txt"), "w", encoding="utf-8-sig") as f_:
+                f_.write("파일 형식: I, Q 번갈아 float32 (little-endian) · 복소 샘플 1 개 = 8 바이트 · 헤더 없음\n"
+                         "읽기 (Python): v = numpy.fromfile(파일, dtype=numpy.float32); iq = v[0::2] + 1j * v[1::2]\n"
+                         "읽기 (MATLAB): v = fread(fopen(파일), Inf, 'float32'); iq = v(1:2:end) + 1i*v(2:2:end);\n"
+                         "샘플레이트: %.6f MSps · 샘플 수: %d · 주파수: %.6f GHz · SG (DPD OFF): %.2f dBm\n"
+                         "ILC반복_ILC신호.bin   = 그 반복에 SMW 로 보낸 ILC 입력 u (원래 신호와 같은 크기 기준)\n"
+                         "ILC반복_평균IQ.bin    = 그 반복에 FSW 로 받은 I/Q 를 주기마다 맞춰 평균한 것 (지연 · 위상 맞춘 뒤, FSW 받은 크기 그대로)\n"
+                         "00_원신호.bin · 00_DPD_OFF_평균IQ.bin = DPD OFF 때\n"
+                         "최고_ILC신호.bin · 최고_평균IQ.bin = ILC 중 가장 좋았던 반복 (끝나거나 중지할 때)\n"
+                         % (fs / 1e6, len(self.sig.x), self.p.get("freq_ghz", float("nan")), self.p["sg_dbm"]))
+            self.sig_bin(self.sig.x, "00_원신호")
+            self.log("  ILC 신호 · 평균 I/Q 저장 (.bin): %s" % d)
+        except Exception as e:
+            self._sig_dir = None
+            self.log("  ⚠ Signals 폴더 준비 실패: %s" % e)
+
+    def sig_bin(self, iq, name):
+        """복소 신호 → I, Q float32 번갈아 .bin"""
+        d = getattr(self, "_sig_dir", None)
+        if not d or iq is None:
+            return None
+        try:
+            a = np.asarray(iq, dtype=np.complex64)
+            v = np.empty(2 * len(a), dtype="<f4")
+            v[0::2], v[1::2] = a.real, a.imag
+            pth = os.path.join(d, name + ".bin")
+            v.tofile(pth)
+            return pth
+        except Exception as e:
+            self.log("  ⚠ .bin 저장 실패 (%s): %s" % (name, e))
+            return None
+
+    def sig_bin_best(self, best, k=None):
+        """ILC 가장 좋았던 반복의 입력 · 평균 I/Q → 최고_*.bin"""
+        if not getattr(self, "_sig_dir", None) or best is None:
+            return
+        self.sig_bin(best[2], "최고_ILC신호")
+        self.sig_bin(best[3], "최고_평균IQ")
+        self.log("  ILC .bin 저장 끝 (최고 %.1f dBc): %s" % (best[0], self._sig_dir))
 
     def ilc_save(self, path, meta):
         """ILC 결과 (가장 좋았던 입력 u · SG · 원래 신호 x) 를 파일로 → 나중에 ILC 다시 안 돌리고 바로 모델 학습"""
