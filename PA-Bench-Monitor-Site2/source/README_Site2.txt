@@ -1,18 +1,4 @@
-PA Bench Monitor Site2 v1.4.53_JSH  (PA Bench Monitor v2.5.138 기반 · PA Analyzer 연동판)
-
-■ v1.4.53_JSH (JSH 판 · 원본 v1.4.53 에 아래 두 가지만 더함)
-  - 위쪽 패널 녹색 테마: 맨 위 막대 · 측정 탭 줄 · 큰 숫자 칸 사이 바탕만 #00704A (글씨 · 숫자 칸 · 버튼은 원래 색)
-    EXE 이름: dist\PA-Bench-Monitor-Site2_v1.4.53_JSH\PA-Bench-Monitor-Site2_v1.4.53_JSH.exe
-  - ILC 신호 · 평균 I/Q 를 .bin 으로 자동 저장
-    저장 위치: 프로그램 (EXE) 폴더 안 Signals\ILC_날짜_시각_SG○○dBm\  (못 쓰면 %APPDATA%\PADPDTester\Signals\)
-      00_원신호.bin · 00_DPD_OFF_평균IQ.bin           DPD OFF 때
-      ILC01_ILC신호.bin · ILC01_평균IQ.bin …          반복마다: 보낸 ILC 신호 · 받아 주기마다 평균한 I/Q
-      최고_ILC신호.bin · 최고_평균IQ.bin               가장 좋았던 반복 (끝날 때 · 중지할 때)
-      _형식.txt                                        형식 · 샘플레이트 · 샘플 수 · 읽는 법
-    형식: I, Q 번갈아 float32 little-endian, 헤더 없음 (Python: numpy.fromfile(f, numpy.float32))
-  - 그 밖의 예전 JSH 기능 (Lagging/Leading · ILA+보정 · 관측 대역 · 로그 코드 등) 은 이번 판에 없음 → 필요하면 v1.4.42.4_JSH
-
-■ v1.4.53 변경점 - DPD 탭: 진단 요약 · ILC 두 개 비교 · AM-AM/PM 산포 · 대역 제한 끝 고침 (DPD Tester v0.2.3.117 과 같음)
+PA Bench Monitor Site2 v1.4.52  (PA Bench Monitor v2.5.137 기반 · PA Analyzer 연동판)
 
 ■ v1.4.52 변경점 - 장비별 진단 로그: 명령 하나가 1 초 넘게 걸리거나 실패하면 파워서플라이 로그에 그 장비 주소 · 명령 · 시간 · 오류 (같은 장비는 20 초에 한 번)
   - Site2 Vdd (E3632A 2 대) · 게이트 (N6705C · E3631A) 중 어느 장비가 느리거나 응답이 없는지 바로 보임
@@ -230,5 +216,5 @@ PA Bench Monitor Site2 v1.4.53_JSH  (PA Bench Monitor v2.5.138 기반 · PA Anal
   - 설정 폴더는 PA Bench Monitor 와 같음 (%APPDATA%\PABenchMonitor)
 
 ■ 실행
-  - EXE 만들기: build_exe_site2.bat  → dist\PA-Bench-Monitor-Site2_v1.4.53\PA-Bench-Monitor-Site2_v1.4.53.exe
+  - EXE 만들기: build_exe_site2.bat  → dist\PA-Bench-Monitor-Site2_v1.4.52\PA-Bench-Monitor-Site2_v1.4.52.exe
   - 빌드 없이: run_without_build_site2.bat  (python pa_bench_monitor_site2.py)

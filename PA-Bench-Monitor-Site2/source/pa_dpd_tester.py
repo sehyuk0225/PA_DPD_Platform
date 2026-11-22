@@ -26,7 +26,7 @@ except Exception as _e:                     # numpy 가 없는 등
     E = None
     _IMPORT_ERR = _e
 
-VERSION = "v0.2.3.117"
+VERSION = "v0.2.3.116"
 APP = "PA DPD Tester"
 
 SET_DIR = os.path.join(os.environ.get("APPDATA") or os.path.expanduser("~"), "PADPDTester")
@@ -2186,10 +2186,6 @@ class App:
             self._log_new = 0
             self.lbl_lognew.configure(text="")
         ttk.Button(lbar, text="⏬ 맨 아래 (최신)", command=_bottom).pack(side="left", padx=(8, 0))
-        b_dg = ttk.Button(lbar, text="📋 진단 요약 복사", command=self.diag_copy)
-        b_dg.pack(side="left", padx=(8, 0))
-        Tip(b_dg, "마지막 실행의 진단 요약 (숫자만) 을 복사 → 메신저 · 메일로 휴대폰에 보내 붙여넣기.\n"
-                  "옮길 수 없으면 요약 맨 끝 '코드' 한 줄만 적어 보내도 됨 (측정 원본 데이터는 안 나감).")
         self.lbl_lognew = ttk.Label(lbar, text="", style="Info.TLabel")
         self.lbl_lognew.pack(side="left", padx=(8, 0))
         lw_ = ttk.Frame(lg)
@@ -4595,7 +4591,6 @@ class App:
                     self.busy(False)
                     self.update_chips()
                     self.take_auto_kml()
-                    self.diag_show()
                     self.st_last = (("✖ 실패 %s" if getattr(self, "_had_err", False) else "✔ 끝 %s") % time.strftime("%H:%M"),
                                     "#c62828" if getattr(self, "_had_err", False) else "#1565c0")
                     self.save_run_data()
@@ -5753,8 +5748,7 @@ class App:
                 ("focus", "보정 기준", 150), ("when", "저장 시각", 150))
         tf = ttk.Frame(f)
         tf.pack(fill="both", expand=True)
-        tv = ttk.Treeview(tf, columns=[c[0] for c in cols], show="headings", height=min(14, max(6, len(files))), style="Ilc.Treeview",
-                          selectmode="extended")
+        tv = ttk.Treeview(tf, columns=[c[0] for c in cols], show="headings", height=min(14, max(6, len(files))), style="Ilc.Treeview")
         for k, t, w_ in cols:
             tv.heading(k, text=t)
             tv.column(k, width=w_, anchor="center" if k != "stype" else "w")
@@ -5782,7 +5776,7 @@ class App:
             tv.selection_set("0")
             tv.focus("0")
         res = [None]
-        info = ttk.Label(f, text=("파란 줄 = 지금 주파수와 같음 · 파일 %d 개 (최근 60 개 보관) · 비교는 Ctrl + 클릭으로 두 개" % len(files)) if files else
+        info = ttk.Label(f, text=("파란 줄 = 지금 주파수와 같음 · 파일 %d 개 (최근 60 개 보관)" % len(files)) if files else
                          "저장한 ILC 가 없습니다. 5 카드 [한계 ACLR (ILC)] 를 한 번 끝까지 돌리면 자동 저장됩니다.", font=("맑은 고딕", 10))
         info.pack(anchor="w", pady=(6, 0))
 
@@ -5812,32 +5806,6 @@ class App:
         ttk.Button(bb, text="✔ 이걸로 고르기", command=ok, style="Pri.TButton").pack(side="left")
         ttk.Button(bb, text="다른 파일…", command=other).pack(side="left", padx=(6, 0))
         ttk.Button(bb, text="📁 폴더 열기", command=opendir).pack(side="left", padx=(6, 0))
-
-        def two():
-            sel = tv.selection()
-            if len(sel) != 2:
-                info.configure(text="비교할 ILC 두 개를 Ctrl + 클릭으로 고르세요 (같은 신호 · 같은 샘플레이트)")
-                return None
-            return [files[int(i_)][1] for i_ in sel]
-
-        def cmp_(avg=False):
-            ps = two()
-            if ps:
-                out = self.ilc_compare_files(ps, use_avg=avg)
-                if out is not None:
-                    adj = [b_ for b_ in out["bands"] if b_[0] == "인접"][0]
-                    info.configure(text="비교: 전체 차이 %.1f dB · 인접 보정량 일치 %.0f%% (자세한 건 로그)%s"
-                                   % (out["total"], adj[3], " → 평균을 쓸 ILC 로 정함" if avg else ""))
-                    if avg:
-                        top.destroy()
-        bc = ttk.Button(bb, text="⚖ 두 개 비교", command=cmp_)
-        bc.pack(side="left", padx=(6, 0))
-        Tip(bc, "Ctrl + 클릭으로 ILC 두 개를 골라 비교 (계산만 · 회사 PC 안에서).\n"
-                "보정량 일치 % 가 높으면 ILC 보정은 매번 같은 결정적 왜곡 → 모델 구조 문제,\n"
-                "낮으면 ILC 입력에 측정 잡음이 많이 쌓인 것 → 두 개 평균으로 학습하면 나아짐.")
-        ba = ttk.Button(bb, text="두 개 평균을 쓸 ILC 로", command=lambda: cmp_(True))
-        ba.pack(side="left", padx=(6, 0))
-        Tip(ba, "두 ILC 를 지연 · 이득 맞춰 평균 → [ILC 결과로 모델 만들기] 의 정답으로 (측정 잡음 ↓)")
         ttk.Button(bb, text="취소", command=top.destroy).pack(side="right")
         top.bind("<Escape>", lambda e: top.destroy())
         self.center_popup(top)
@@ -5845,69 +5813,6 @@ class App:
         tv.focus_set()
         top.wait_window()
         return res[0]
-
-    def diag_show(self):
-        """실행 끝: 진단 요약을 로그에 한 덩어리로 (📋 진단 요약 복사 로 그대로 복사)"""
-        eng = self.engine or getattr(self, "_last_eng", None)
-        if eng is None or not hasattr(eng, "diag_summary"):
-            return
-        try:
-            lines, code = eng.diag_summary(VERSION)
-        except Exception as e:
-            self.log("(진단 요약 실패: %s)" % e)
-            return
-        if not lines:
-            return
-        txt = "━━ 진단 요약 %s %s\n" % (VERSION, time.strftime("%m-%d %H:%M")) + "\n".join("· " + l_ for l_ in lines) + "\n코드: " + code
-        self._diag_text = txt
-        self.log(txt)
-
-    def diag_copy(self):
-        t = getattr(self, "_diag_text", None)
-        if not t:
-            self.diag_show()
-            t = getattr(self, "_diag_text", None)
-        if not t:
-            self.log("진단 요약이 아직 없음 (측정 · ILC · ILC→모델을 한 번 끝까지 돌리면 생김)")
-            return
-        try:
-            self.root.clipboard_clear()
-            self.root.clipboard_append(t)
-            self.log("📋 진단 요약 복사됨 (%d 줄) - 메신저 · 메일에 붙여넣기. 못 옮기면 '코드:' 줄만 적어 보내기" % (t.count("\n") + 1))
-        except Exception as e:
-            self.log("복사 실패: %s" % e)
-
-    def ilc_compare_files(self, paths, use_avg=False):
-        """저장한 ILC 두 개 비교 (회사 PC 안에서 계산 · 숫자만 로그) → 원하면 두 개 평균을 '쓸 ILC' 로"""
-        try:
-            st1, st2 = E.Engine.ilc_load(paths[0]), E.Engine.ilc_load(paths[1])
-            eng = E.Engine(dict(self.params()), log=self.log)
-            out = eng.ilc_compare(st1, st2)
-        except Exception as e:
-            messagebox.showwarning(APP, "ILC 비교 실패: %s" % e, parent=self.root)
-            return None
-        self._cmp_diag = out
-        try:
-            if self.engine is not None:
-                self.engine._dg("cmp", out)
-        except Exception:
-            pass
-        if use_avg:
-            st = dict(st1)
-            st["u"] = out["u_avg"]
-            b1, b2 = st1["best"][0], st2["best"][0]
-            st["best"] = (min(b1, b2), st1["best"][1], st["u"], None)
-            st["path"] = "평균(%s + %s)" % (os.path.basename(paths[0]), os.path.basename(paths[1]))
-            st["meta"] = dict(st1.get("meta") or {}, stype="평균 ILC 2개")
-            self._ilc_pending = st
-            self.log("📂 쓸 ILC: 두 ILC 평균 (%s · %s) → [ILC 결과로 모델 만들기] 를 누르면 이걸로 (측정 잡음이 줄어든 정답)"
-                     % (os.path.basename(paths[0]), os.path.basename(paths[1])))
-            try:
-                self.tree.selection_remove(self.tree.selection())
-            except Exception:
-                pass
-            self.ilc_box_update()
-        return out
 
     def ilc_open(self):
         """📂 저장한 ILC 불러오기 → 바로 ILC 결과로 모델 만들기"""

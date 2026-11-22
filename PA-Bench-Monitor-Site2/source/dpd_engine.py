@@ -947,7 +947,6 @@ class Engine:
         return pk + (lvl - lvl0) + (C.papr(pd) - papr0) + float(self.p.get("ref_margin_db", 3.0) or 3.0) + getattr(self, "_ref_extra", 0.0)
 
     def eta_reset(self, total):
-        self.diag = {}                    # 진단 요약 (실행 끝에 한 덩어리로 · 복사해서 보내기)
         self._ref_mem = None              # 실행마다 처음엔 FSW 자동 레벨
         self._ref_extra = 0.0
         self._best_id = None              # 이번 실행에서 가장 좋은 측정 (보관 신호 지울 때 남김)
@@ -1231,7 +1230,6 @@ class Engine:
             w, nm = self._ilcm_focus(x, u, w, nm)
             self._ilcm_ampdiag(x, u, w)
             self._ilcm_explain(x, u, w)
-            self._ilcm_scatter(x, u, w)
             self._ilcm_fit = nm
             pd, n_clip = self.dpd_signal(w)
             y_al, last = self.measure(pd, "%sILC→모델" % label_pre, 1, nm, step)
@@ -1531,7 +1529,6 @@ class Engine:
                 self._resume = dict(kind="ilc", sg=sg_b, sg_end=self.p["sg_dbm"], u=best[2], y_al=best[3], gk=gk, best=best, k=k,
                                     label_pre=lp, step=stp, w_mode_used=self.w_mode(), stopped=True)
                 self._ilc_u = best[2]
-                self.sig_bin_best(best)                         # JSH
                 self.log("  ■ ILC 중지 → 지금까지 가장 좋았던 것 (%.1f dBc) 을 'ILC 결과로 모델 만들기' 에 씀" % best[0])
             raise
         finally:
@@ -1552,9 +1549,6 @@ class Engine:
         if resume:                                         # 이어서: 앞 ILC 의 가장 좋았던 입력 · 이득에서 계속
             u, y_al, gk, best, k0 = resume["u"].copy(), resume["y_al"], resume["gk"], resume["best"], resume["k"]
             n = int(resume["n"])
-        self.sig_bin_start(label_pre)                      # JSH: Signals\ILC_… 폴더
-        if not resume:
-            self.sig_bin(y_al, "00_DPD_OFF_평균IQ")
         for k in range(k0 + 1, k0 + n + 1):
             self.check()
             self.log("▶ %sILC %d / %d (한계 ACLR 찾기 · 이득 %.2f)" % (label_pre, k, k0 + n, gk))
@@ -1567,8 +1561,6 @@ class Engine:
                 self.log("  최고값 제한 (+%.1f dB) 에 걸린 샘플 %d 개 (많으면 ILC 가 못 내려감 → 4 카드 최고값 제한 ↑)" % (p["peak_lim_db"], n_clip))
             nm = 10 * np.log10(np.mean(np.abs(e) ** 2) / np.mean(np.abs(x) ** 2))
             y_al, r = self.measure(u, "%sILC %d" % (label_pre, k), k, nm, step, kind="ilc")
-            self.sig_bin(u, "ILC%02d_ILC신호" % k)             # JSH: 이번에 보낸 ILC 신호
-            self.sig_bin(y_al, "ILC%02d_평균IQ" % k)           # JSH: 이번에 받아 평균한 I/Q
             sc = C.aclr_worst(r)
             fd = self.focus_dbc(y_al)
             if fd is not None:                         # 집중 구간을 정했으면 그 구간 전력으로 좋고 나쁨을 판단
@@ -1587,7 +1579,6 @@ class Engine:
             if r.get("clipped"):
                 self.log("  ⚠ SG 레벨이 SG 최대에 걸림 → ILC 가 입력을 더 못 키움 (2 카드 SG 최대 확인)")
         self._ilc_u = best[2]
-        self.sig_bin_best(best)                             # JSH
         sg_b = best[1].get("base_sg") if isinstance(best[1], dict) else None
         sg_b = float(sg_b) if sg_b is not None and sg_b == sg_b else self.p["sg_dbm"]      # ILC 가장 좋았던 순간의 SG
         self._resume = dict(kind="ilc", sg=sg_b, sg_end=self.p["sg_dbm"], u=best[2], y_al=best[3], gk=gk, best=best, k=k0 + n,
@@ -1690,76 +1681,6 @@ class Engine:
             self.p["sg_dbm"] = base
         return self.results
 
-    # ---- JSH: ILC 신호 · 평균 I/Q 를 .bin 으로 (프로그램 폴더 \Signals) ----
-    @staticmethod
-    def signals_dir():
-        """프로그램 (EXE 또는 .py) 이 있는 폴더 안 Signals. 못 쓰면 %APPDATA%\\PADPDTester\\Signals"""
-        import sys
-        base = os.path.dirname(os.path.abspath(sys.executable if getattr(sys, "frozen", False) else __file__))
-        for d in (os.path.join(base, "Signals"),
-                  os.path.join(os.environ.get("APPDATA") or os.path.expanduser("~"), "PADPDTester", "Signals")):
-            try:
-                os.makedirs(d, exist_ok=True)
-                t_ = os.path.join(d, ".w")
-                open(t_, "w").close()
-                os.remove(t_)
-                return d
-            except Exception:
-                continue
-        return None
-
-    def sig_bin_start(self, label_pre=""):
-        """ILC 한 번 (한 SG 레벨) 마다 새 폴더 Signals\\ILC_날짜_시각_SG○○dBm + 원래 신호 · 형식 설명"""
-        self._sig_dir = None
-        try:
-            root = self.signals_dir()
-            if root is None:
-                self.log("  ⚠ Signals 폴더를 만들 수 없음 → .bin 저장 안 함")
-                return
-            d = os.path.join(root, "ILC_%s_SG%+.2fdBm" % (time.strftime("%Y%m%d_%H%M%S"), self.p["sg_dbm"]))
-            os.makedirs(d, exist_ok=True)
-            self._sig_dir = d
-            fs = self.sig.fs
-            with open(os.path.join(d, "_형식.txt"), "w", encoding="utf-8-sig") as f_:
-                f_.write("파일 형식: I, Q 번갈아 float32 (little-endian) · 복소 샘플 1 개 = 8 바이트 · 헤더 없음\n"
-                         "읽기 (Python): v = numpy.fromfile(파일, dtype=numpy.float32); iq = v[0::2] + 1j * v[1::2]\n"
-                         "읽기 (MATLAB): v = fread(fopen(파일), Inf, 'float32'); iq = v(1:2:end) + 1i*v(2:2:end);\n"
-                         "샘플레이트: %.6f MSps · 샘플 수: %d · 주파수: %.6f GHz · SG (DPD OFF): %.2f dBm\n"
-                         "ILC반복_ILC신호.bin   = 그 반복에 SMW 로 보낸 ILC 입력 u (원래 신호와 같은 크기 기준)\n"
-                         "ILC반복_평균IQ.bin    = 그 반복에 FSW 로 받은 I/Q 를 주기마다 맞춰 평균한 것 (지연 · 위상 맞춘 뒤, FSW 받은 크기 그대로)\n"
-                         "00_원신호.bin · 00_DPD_OFF_평균IQ.bin = DPD OFF 때\n"
-                         "최고_ILC신호.bin · 최고_평균IQ.bin = ILC 중 가장 좋았던 반복 (끝나거나 중지할 때)\n"
-                         % (fs / 1e6, len(self.sig.x), self.p.get("freq_ghz", float("nan")), self.p["sg_dbm"]))
-            self.sig_bin(self.sig.x, "00_원신호")
-            self.log("  ILC 신호 · 평균 I/Q 저장 (.bin): %s" % d)
-        except Exception as e:
-            self._sig_dir = None
-            self.log("  ⚠ Signals 폴더 준비 실패: %s" % e)
-
-    def sig_bin(self, iq, name):
-        """복소 신호 → I, Q float32 번갈아 .bin"""
-        d = getattr(self, "_sig_dir", None)
-        if not d or iq is None:
-            return None
-        try:
-            a = np.asarray(iq, dtype=np.complex64)
-            v = np.empty(2 * len(a), dtype="<f4")
-            v[0::2], v[1::2] = a.real, a.imag
-            pth = os.path.join(d, name + ".bin")
-            v.tofile(pth)
-            return pth
-        except Exception as e:
-            self.log("  ⚠ .bin 저장 실패 (%s): %s" % (name, e))
-            return None
-
-    def sig_bin_best(self, best, k=None):
-        """ILC 가장 좋았던 반복의 입력 · 평균 I/Q → 최고_*.bin"""
-        if not getattr(self, "_sig_dir", None) or best is None:
-            return
-        self.sig_bin(best[2], "최고_ILC신호")
-        self.sig_bin(best[3], "최고_평균IQ")
-        self.log("  ILC .bin 저장 끝 (최고 %.1f dBc): %s" % (best[0], self._sig_dir))
-
     def ilc_save(self, path, meta):
         """ILC 결과 (가장 좋았던 입력 u · SG · 원래 신호 x) 를 파일로 → 나중에 ILC 다시 안 돌리고 바로 모델 학습"""
         import json
@@ -1835,10 +1756,6 @@ class Engine:
         x, u = self.sig.x, st["u"]
         n_it = int(p["iters"])
         self.eta_reset(n_it)
-        try:
-            self._dg("ilc_best", float(st["best"][0]))
-        except Exception:
-            pass
         self.eta_level(n_it)
         stp = "SG %.2f dBm · ILC 결과로" % st["sg"]
         try:
@@ -1863,7 +1780,6 @@ class Engine:
             w, nm = self._ilcm_focus(x, u, w, nm)
             self._ilcm_ampdiag(x, u, w)
             self._ilcm_explain(x, u, w)
-            self._ilcm_scatter(x, u, w)
             pd, n_clip = self.dpd_signal(w)
             self.log("  최고값 제한 (+%.1f dB) 에 걸린 샘플 %d 개%s" % (p["peak_lim_db"], n_clip,
                      "  ⚠ 많음 → 모델 출력 피크가 잘림 (4 카드 최고값 제한 ↑)" if n_clip > 0.0005 * len(pd) else ""))
@@ -1931,7 +1847,6 @@ class Engine:
             if d > n / 2:
                 d -= n
             g = np.vdot(x, u) / np.vdot(x, x)
-            self._dg("pair", (float(d), float(20 * np.log10(max(abs(g), 1e-12))), float(np.degrees(np.angle(g)))))
             self.log("  짝 맞춤 확인 (x ↔ ILC 입력): 지연 %+.3f 샘플 · 이득 %+.2f dB · 위상 %+.1f°%s"
                      % (d, 20 * np.log10(max(abs(g), 1e-12)), np.degrees(np.angle(g)),
                         "  (정상)" if abs(d) <= 0.02 else "  ⚠ 어긋남 → 지연을 맞춘 ILC 입력으로 학습"))
@@ -1971,7 +1886,6 @@ class Engine:
                 res[nm_] = pct
                 parts.append("%s %.0f%% (보정량 %.1f dBc)" % (nm_, pct, 10 * np.log10(max(pc, 1e-30) / Xp)))
             self.log("  보정량 흉내 비율 (ILC 보정량 중 모델이 재현한 몫 · 100% = 완전): " + " · ".join(parts))
-            self._dg("expl", res)
             pa = res.get("인접", float("nan"))
             if pa == pa:
                 if pa < 20:
@@ -1983,211 +1897,6 @@ class Engine:
                     self.log("    → 대부분 따라함 = 모델은 충분 · 남은 차이는 피크 제한 · 적용 단계 쪽")
         except Exception as e:
             self.log("  (보정량 흉내 비율 실패: %s)" % e)
-
-    def _dg(self, k, v):
-        if not isinstance(getattr(self, "diag", None), dict):
-            self.diag = {}
-        self.diag[k] = v
-
-    def obs_half(self):
-        """FSW 가 실제로 보는 대역의 절반 (Hz): 마지막 측정의 FSW I/Q 쓸 수 있는 대역 · 없으면 0.8 × fs / 2 · 디지털 끝 fs/2 안"""
-        fs = self.sig.fs
-        bw = None
-        for r in reversed(getattr(self, "results", None) or []):
-            if isinstance(r.get("fsw_bw"), (int, float)) and r["fsw_bw"] > 0:
-                bw = float(r["fsw_bw"])
-                break
-        h = (bw / 2) if bw else 0.4 * fs
-        return min(h, 0.5 * fs)
-
-    def _ilcm_scatter(self, x, u, w):
-        """AM-AM / AM-PM 산포: 입력 크기 구간별로 ILC 입력 u/x 가 얼마나 흩어지는지 (메모리 · 상태에 따라 달라지는 정도)
-        → 모델 출력 z 로 나눈 u/z 의 흩어짐 = 모델이 못 맞춘 몫. 가장 못 맞춘 크기 구간을 알려 줌 (Doherty 피킹 구간 등)"""
-        try:
-            z = self.model.apply(x, w)
-            a = np.abs(x)
-            amax = float(np.max(a)) or 1.0
-            ok = a > 0.03 * amax
-            edges = (0, 50, 70, 80, 90, 95, 98, 99.5, 100)
-            qs = np.percentile(a[ok], edges)
-            g0 = np.vdot(x, u) / np.vdot(x, x)
-            rows, worst = [], None
-            for i in range(len(edges) - 1):
-                m = ok & (a >= qs[i]) & (a <= qs[i + 1])
-                if np.sum(m) < 50:
-                    continue
-                gu = u[m] / x[m] / g0
-                rz = u[m] / np.where(np.abs(z[m]) > 1e-12, z[m], 1e-12)
-                sd_u = float(np.std(20 * np.log10(np.maximum(np.abs(gu), 1e-9))))
-                sp_u = float(np.degrees(np.std(np.angle(gu * np.conj(np.mean(gu) / max(abs(np.mean(gu)), 1e-12))))))
-                sd_r = float(np.std(20 * np.log10(np.maximum(np.abs(rz), 1e-9))))
-                sp_r = float(np.degrees(np.std(np.angle(rz * np.conj(np.mean(rz) / max(abs(np.mean(rz)), 1e-12))))))
-                mg = float(20 * np.log10(max(abs(np.mean(gu)), 1e-12)))
-                e_r = 20 * np.log10(max(np.hypot(sd_r / 8.686, np.radians(sp_r)), 1e-9))   # 남은 흩어짐 (상대 오차 dB)
-                lab = ("크기 하위 %g%%" % edges[i + 1]) if i == 0 else ("%g~%g%%%s" % (edges[i], edges[i + 1], " (피크)" if edges[i + 1] == 100 else ""))
-                rows.append("%s: 이득 %+.2f dB · 흩어짐 %.2f dB / %.1f° → 모델 뒤 %.2f dB / %.1f°" % (lab, mg, sd_u, sp_u, sd_r, sp_r))
-                if worst is None or e_r > worst[1]:
-                    worst = (lab, e_r, sd_r, sp_r)
-            self.log("  AM-AM / AM-PM 산포 (입력 크기 순위 구간별 · ILC 입력 u/x 의 흩어짐 → 모델 뒤 남은 흩어짐):")
-            for r_ in rows:
-                self.log("    " + r_)
-            if worst:
-                self._dg("scat", worst)
-                self.log("    → 모델이 가장 못 맞춘 크기 구간: %s (남은 오차 %.1f dB)%s" % (
-                    worst[0], worst[1], "  = 큰 신호 쪽 (Doherty 피킹이 켜지는 구간 · 포화)" if worst[0].startswith(("95~", "98~", "99.5~"))
-                    else "  = 작은 · 중간 신호 쪽 (잡음 · 캐리어 앰프 영역)"))
-        except Exception as e:
-            self.log("  (산포 진단 실패: %s)" % e)
-
-    def ilc_compare(self, st1, st2):
-        """ILC 두 결과 비교 (같은 신호): 두 입력 u1 · u2 가 얼마나 같은지 + 보정량 (u − 선형) 이 구간별로 얼마나 일치하는지
-        → 일치 = ILC 가 찾은 보정은 결정적 (모델 구조 문제) / 불일치 = 측정 잡음 · 매번 달라지는 성분 (모델이 따라 할 필요 없음)"""
-        import types
-        x = st1["x_ref"]
-        u1, u2 = st1["u"], st2["u"]
-        if len(u1) != len(u2) or st2.get("x_ref") is None or len(st2["x_ref"]) != len(x):
-            raise RuntimeError("두 ILC 의 신호 길이가 다름 (같은 신호 · 같은 샘플레이트로 돌린 ILC 끼리만)")
-        dx = 10 * np.log10(np.mean(np.abs(st2["x_ref"] - x) ** 2) / np.mean(np.abs(x) ** 2) + 1e-30)
-        if dx > -30:
-            raise RuntimeError("두 ILC 의 원래 신호가 다름 (차이 %.1f dB)" % dx)
-        fs = float(st1.get("fs_ref") or 1.0)
-        self.sig = types.SimpleNamespace(x=x, fs=fs)
-        self._plan = None
-        _c, _b, _a, f0, f1, f2 = self._bands()
-        n = len(x)
-        e1 = np.abs(u1) - np.mean(np.abs(u1))
-        e2 = np.abs(u2) - np.mean(np.abs(u2))
-        a_ = np.real(np.fft.ifft(np.fft.fft(e1) * np.conj(np.fft.fft(e2))))
-        k = int(np.argmax(a_))
-        ym1, y0, yp1 = a_[(k - 1) % n], a_[k], a_[(k + 1) % n]
-        den = ym1 - 2 * y0 + yp1
-        d = k + (0.5 * (ym1 - yp1) / den if den != 0 else 0.0)
-        if d > n / 2:
-            d -= n
-        u2d = C.frac_delay(u2, d) if abs(d) > 0.01 else u2
-        g = np.vdot(u2d, u1) / np.vdot(u2d, u2d)
-        u2a = g * u2d
-        tot = 10 * np.log10(np.mean(np.abs(u1 - u2a) ** 2) / np.mean(np.abs(u1) ** 2))
-        g1 = np.vdot(x, u1) / np.vdot(x, x)
-        g2 = np.vdot(x, u2a) / np.vdot(x, x)
-        C1, C2 = np.fft.fft(u1 - g1 * x), np.fft.fft(u2a - g2 * x)
-        D = np.fft.fft(u1 - u2a)
-        af = np.abs(np.fft.fftfreq(n, 1.0 / fs))
-        Pch = float(np.sum(np.abs(np.fft.fft(u1)[af <= f0]) ** 2)) or 1.0
-        out = dict(delay=float(d), total=float(tot), bands=[])
-        for nm_, msk in (("채널 안", af <= f0), ("인접", (af > f0) & (af <= f1)), ("그다음", (af > f1) & (af <= f2)), ("그 바깥", af > f2)):
-            pc1 = float(np.sum(np.abs(C1[msk]) ** 2))
-            pdf = float(np.sum(np.abs(C1[msk] - C2[msk]) ** 2))
-            pdd = float(np.sum(np.abs(D[msk]) ** 2))
-            out["bands"].append((nm_, 10 * np.log10(max(pdd, 1e-30) / Pch), 10 * np.log10(max(pc1, 1e-30) / Pch),
-                                 max(-100.0, 100.0 * (1 - pdf / pc1)) if pc1 > 1e-20 * Pch else float("nan")))
-        out["u_avg"] = 0.5 * (u1 + u2a)
-        self._dg("cmp", out)
-        self.log("━━ ILC 두 개 비교: 지연 %+.3f 샘플 · 전체 차이 %.1f dB (두 입력 u1 · u2)" % (d, tot))
-        for nm_, dd_, cc_, pct in out["bands"]:
-            if cc_ < -200:
-                self.log("    %s: 없음 (디지털 끝 바깥)" % nm_)
-                continue
-            self.log("    %s: 두 ILC 차이 %.1f dBc · 보정량 %.1f dBc · 보정량 일치 %.0f%%" % (nm_, dd_, cc_, max(pct, -100.0)))
-        adj = [b for b in out["bands"] if b[0] == "인접"][0][3]
-        if adj == adj:
-            if adj >= 80:
-                self.log("    → 인접 채널 보정이 두 번 다 같음 = ILC 보정은 결정적 (매번 같은 왜곡) → 모델이 못 따라하는 건 모델 구조 문제 (나)")
-            elif adj >= 30:
-                self.log("    → 일부만 같음 = 결정적 보정 + 측정 잡음이 섞임 → 두 ILC 평균으로 학습하면 잡음이 줄어듦")
-            else:
-                self.log("    → 두 번이 서로 다름 = ILC 입력의 많은 부분이 측정 잡음 · 매번 달라지는 성분 (가) → 모델이 따라 할 필요 없음 · "
-                         "IQ 평균 ↑ · ILC 이득 ↓ · 평균 ILC 로 학습")
-        return out
-
-    def diag_summary(self, ver=""):
-        """실행 끝 진단 요약: 사람이 읽는 줄 + 짧은 코드 한 줄 (회사 PC → 휴대폰으로 옮겨 적기 쉽게)"""
-        p = self.p
-        dg = getattr(self, "diag", None) or {}
-        rs = [r for r in (getattr(self, "results", None) or []) if isinstance(r, dict)]
-        L, code = [], [ver.replace("v0.2.3.", "v") if ver else ""]
-        fs = getattr(self.sig, "fs", None) if self.sig is not None else None
-        bw = None
-        for r in reversed(rs):
-            if isinstance(r.get("fsw_bw"), (int, float)) and r["fsw_bw"] > 0:
-                bw = r["fsw_bw"]
-                break
-        if fs:
-            L.append("신호 %.2f MSps%s" % (fs / 1e6, (" · FSW I/Q 대역 %.0f MHz" % (bw / 1e6)) if bw else ""))
-            code.append("R%d" % round(fs / 1e7))
-            if bw:
-                code.append("W%d" % round(bw / 1e7))
-        try:
-            L.append("모델 %s · 최고값 제한 %s dB%s · 목표 이득 %s · λ %s" % (
-                method_label(p), p.get("peak_lim_db"), " (부드러움)" if getattr(self, "_soft", False) else "",
-                self.G_REF_NAME.get(p.get("g_ref") or "small", p.get("g_ref")), p.get("lam")))
-        except Exception:
-            pass
-        off = [C.aclr_worst(r) for r in rs if r.get("kind") == "off"]
-        dpd = [(C.aclr_worst(r), r) for r in rs if r.get("kind") not in ("off", "ilc")]
-        ilc = [C.aclr_worst(r) for r in rs if r.get("kind") == "ilc"]
-        st = getattr(self, "_resume", None)
-        ilc_b = None
-        if ilc:
-            ilc_b = min(ilc)
-        elif isinstance(dg.get("ilc_best"), (int, float)):
-            ilc_b = float(dg["ilc_best"])
-        elif isinstance(st, dict) and st.get("kind") == "ilc":
-            try:
-                ilc_b = float(st["best"][0])
-            except Exception:
-                pass
-        parts = []
-        if off:
-            parts.append("DPD OFF %.1f" % off[0])
-            code.append("O%d" % round(off[0]))
-        if ilc_b is not None:
-            parts.append("ILC 최고 %.1f" % ilc_b)
-            code.append("I%d" % round(ilc_b))
-        if dpd:
-            b = min(dpd, key=lambda t: t[0])
-            parts.append("DPD 최고 %.1f" % b[0])
-            code.append("D%d" % round(b[0]))
-        if parts:
-            L.append("ACLR (dBc, 나쁜 쪽): " + " · ".join(parts))
-        seq = [C.aclr_worst(r) for r in rs if r.get("kind") not in ("ilc",)]
-        if len(seq) > 1:
-            L.append("반복별 ACLR: " + " → ".join("%.1f" % v for v in seq[:12]) + (" …" if len(seq) > 12 else ""))
-        cl = [r.get("clipped") for r in rs if r.get("kind") not in ("off",) and isinstance(r.get("clipped"), (int, float))]
-        if cl:
-            L.append("최고값 제한 걸린 샘플: 마지막 %d · 최대 %d" % (cl[-1], max(cl)))
-            k_ = cl[-1]
-            code.append("K%s" % (("%dk" % round(k_ / 1000)) if k_ >= 1000 else "%d" % k_))
-        nm = [r.get("nmse") for r in rs if isinstance(r.get("nmse"), (int, float))]
-        if nm:
-            L.append("학습 오차: 마지막 %.1f dB" % nm[-1])
-            code.append("T%d" % round(nm[-1]))
-        if "band" in dg:
-            L.append("주파수별 학습 오차 (dBc · 몫): " + " · ".join(
-                ("%s %.1f (%.0f%%)" % (n_.split(" (")[0], v_, s_)) if v_ > -200 else ("%s 없음" % n_.split(" (")[0]) for n_, v_, s_ in dg["band"]))
-            code.append("B" + "/".join(("%d" % round(-v_)) if v_ > -200 else "-" for _n, v_, _s in dg["band"]))
-        if "pair" in dg:
-            d_, gd_, ph_ = dg["pair"]
-            L.append("짝 맞춤: 지연 %+.3f 샘플 · 이득 %+.2f dB · 위상 %+.1f°" % (d_, gd_, ph_))
-            code.append("J%d" % round(d_ * 100))
-        if "expl" in dg:
-            e_ = dg["expl"]
-            L.append("보정량 흉내 비율: " + " · ".join("%s %.0f%%" % (k2, v2) for k2, v2 in e_.items()))
-            code.append("X" + "/".join("%d" % round(v2) if v2 == v2 else "-" for v2 in e_.values()))
-        if "iq" in dg:
-            L.append("I/Q 불균형 진단: %+.1f dB" % dg["iq"])
-            code.append("Q%d" % round(dg["iq"] * 10))
-        if "scat" in dg:
-            lab, er, sd_, sp_ = dg["scat"]
-            L.append("산포: 가장 못 맞춘 크기 구간 %s (남은 %.1f dB · %.2f dB / %.1f°)" % (lab, er, sd_, sp_))
-            m_ = re.search(r"([0-9.]+)~?([0-9.]*)%", lab)
-            code.append("S%s:%d" % ((m_.group(1) + ("-" + m_.group(2) if m_.group(2) else "")) if m_ else "?", round(er)))
-        if "cmp" in dg:
-            c_ = dg["cmp"]
-            L.append("ILC 두 개 비교: 전체 차이 %.1f dB · 보정량 일치 " % c_["total"] + " · ".join(
-                "%s %.0f%%" % (n_, p_) for n_, _d, _c, p_ in c_["bands"]))
-            code.append("C" + "/".join("%d" % round(p_) if p_ == p_ else "-" for _n, _d, _c, p_ in c_["bands"]))
-        return L, " ".join(c_ for c_ in code if c_)
 
     def _ilcm_lin(self, x, u, w, nm):
         """(넓은 대역) GMP 에 긴 선형 등화 (±N 탭) 를 붙여 다시 학습 → 좋아지면 바꿈. 먼저 '선형만' 으로 채널 안 오차 진단"""
@@ -2235,7 +1944,6 @@ class Engine:
             _a, nml = C.LinGMPModel(1, 1, 0, False, p["lam"], nl).fit(x, u, n_fit=nf)
             _b, nmc = C.LinGMPModel(1, 1, 0, False, p["lam"], nl, nc).fit(x, u, n_fit=nf)
             g = nml - nmc
-            self._dg("iq", float(g))
             self.log("  I/Q 불균형 (켤레 · 거울상) 진단: 선형 FIR %.1f dB → + 켤레 FIR ±%d 탭 %.1f dB = %.1f dB 좋아짐%s"
                      % (nml, nc, nmc, g, "  → 거울상 성분이 큼 = I/Q 불균형이 원인 쪽 (GMP · DVR · 신경망은 이걸 못 배움)" if g >= 3
                         else "  → I/Q 불균형은 주원인 아님" if g < 1 else "  → 조금 있음"))
@@ -2319,7 +2027,6 @@ class Engine:
                 share[nm_] = pw / tot
                 parts.append("%s %.1f dBc (%.0f%%)" % (nm_, 10 * np.log10(max(pw, 1e-30) / pc), 100 * pw / tot))
             self.log("  주파수별 학습 오차 (모델 출력 − ILC 입력, 채널 전력 기준 · 괄호 = 몫): " + " · ".join(parts))
-            self._dg("band", [(nm_, 10 * np.log10(max(float(np.sum(Pr[msk])) * df, 1e-30) / pc), 100 * share[nm_]) for nm_, msk in names])
             out_sh = share["그 바깥 (ACLR 로 안 보임)"]
             in_sh = share["채널 안"]
             if out_sh > 0.4:
@@ -2331,10 +2038,6 @@ class Engine:
             # 대역 제한 학습: '그다음 채널' 끝 (±f2) 바깥 오차는 가중 0 (측정으로 확인 안 된 성분은 맞추지 않음)
             #   → 모델 능력을 채널 안 · 인접 · 그다음에만 씀. 바꿀지는 학습 오차가 아니라 '인접 채널 차이' 로 판단
             t0 = time.time()
-            f2_0 = f2
-            f2 = min(f2, self.obs_half())                  # 끝은 FSW 가 실제로 보는 대역 · 디지털 끝 (fs/2) 안으로
-            if f2 < f2_0 - 1e6:                            #   (예전: 400 MHz · 983 MSps 에서 끝 600 MHz > 491 → 걸러지는 게 없었음)
-                self.log("  대역 제한 끝 %.0f → %.0f MHz (FSW 가 보는 대역 · 디지털 끝 안으로)" % (f2_0 / 1e6, f2 / 1e6))
             r_ = self._fit_mask(self.model, x, u, lambda fr: np.where(np.abs(fr) <= f2, 1.0, 1e-3))
             if r_ is None:
                 return u, w, nm
