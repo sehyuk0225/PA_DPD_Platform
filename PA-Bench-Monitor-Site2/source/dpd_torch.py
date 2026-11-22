@@ -33,11 +33,27 @@ _err = ""
 _path = None
 
 
+DEFAULT_DIRS = (r"D:\torchlib",)      # 안내한 설치 경로 (pip install --target D:\torchlib …) - 폴더를 따로 안 정해도 여기서 읽음
+
+
+def default_dir():
+    """안내한 torch 설치 폴더 중 있는 것 (없으면 None)"""
+    for d in DEFAULT_DIRS:
+        try:
+            if os.path.isdir(os.path.join(d, "torch")) or os.path.isdir(os.path.join(d, "Lib", "site-packages", "torch")):
+                return d
+        except OSError:
+            pass
+    return None
+
+
 def load(path=None):
-    """torch 를 읽음 (path = pip --target 폴더). → (성공, 설명)"""
+    """torch 를 읽음 (path = pip --target 폴더 · 없으면 안내한 기본 경로 D:\torchlib). → (성공, 설명)"""
     global _torch, _err, _path
     if _torch is not None:
         return True, "torch %s (%s)" % (_torch.__version__, _path or "기본 위치")
+    if not path or not os.path.isdir(path):
+        path = default_dir() or path
     if path:
         path = os.path.abspath(path)
         if not os.path.isdir(path):
@@ -92,6 +108,7 @@ class TorchNNModel:
         self.seed = seed
         self.w = None
         self.scale = 1.0
+        self.K, self.L = "NN", 0                      # 표시용 (NNModel 과 같게)
 
     def n_in(self):
         return self._f.n_in()

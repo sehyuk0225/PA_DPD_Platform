@@ -702,8 +702,8 @@ class FSW:
         except Exception:
             pass
 
-    def show_like(self, freq=None, att=None, rbw=None):
-        """신호 내보내기 뒤: FSW 화면을 Mod. 화면 (스펙트럼 ACLR) 으로 · 그 측정 때의 감쇠 · RBW 로 맞춰 계속 스윕 (원래대로 안 돌림)"""
+    def show_like(self, freq=None, att=None, rbw=None, ref=None, span=None):
+        """신호 내보내기 뒤: FSW 화면을 Mod. 화면 (스펙트럼 ACLR) 으로 · 그 측정 때의 감쇠 · RBW · Ref · Span 으로 맞춰 계속 스윕 (원래대로 안 돌림)"""
         io = self.io
         ch = self.spec_channel()
         if ch:
@@ -723,8 +723,12 @@ class FSW:
             io.write("FREQ:CENT %.0f" % freq)
         if rbw:
             io.write("BAND:RES %.0f" % rbw)
+        if span:
+            io.write("FREQ:SPAN %.0f" % span)
         if att is not None:
             io.write("INP:ATT %.0f" % att)
+        if ref is not None and ref == ref:
+            io.write("DISP:TRAC:Y:SCAL:RLEV %.2f" % ref)
         io.write("INIT:CONT ON")
         io.opc()
         self.errors()
@@ -840,6 +844,11 @@ class FSW:
                 out["att"] = float(io.query("INP:ATT?"))
             except Exception:
                 pass
+            for k_, q_ in (("ref", "DISP:TRAC:Y:SCAL:RLEV?"), ("span", "FREQ:SPAN?"), ("rbw_now", "BAND:RES?")):
+                try:                                          # 그 측정 때 Mod. 화면 조건 (내보내기 때 그대로 되돌리려고)
+                    out[k_] = float(io.query(q_))
+                except Exception:
+                    pass
             out["tx_list"] = txs
             out["tx_sum"] = float(10 * np.log10(np.sum(10 ** (np.asarray(txs) / 10.0))))
             try:                                              # 그래프용 트레이스
@@ -1198,7 +1207,7 @@ class DemoFSW:
     def restore_view(self):
         return False
 
-    def show_like(self, freq=None, att=None, rbw=None):
+    def show_like(self, freq=None, att=None, rbw=None, ref=None, span=None):
         return "Spectrum (demo)"
 
     def mod_aclr(self, freq=None, rbw=None, att=None):

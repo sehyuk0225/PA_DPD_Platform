@@ -57,7 +57,7 @@ except ImportError:
             pass
 
 APP_NAME = "PA Bench Monitor"
-VERSION = "v2.5.127"
+VERSION = "v2.5.138"
 
 BG = "#0b0f14"
 FG_DIM = "#7d8a99"

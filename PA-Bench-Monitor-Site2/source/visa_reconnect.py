@@ -11,6 +11,7 @@ import time
 LOG = None          # LOG(msg, tag) - 프로그램이 붙여 줌 (파워서플라이 로그)
 FAILS = 2           # 이어서 몇 번 실패하면 다시 연결
 GAP_S = 5.0         # 다시 연결은 이 간격보다 자주 안 함
+SLOW_S = 1.0        # 명령 하나가 이보다 오래 걸리면 '느린 응답' 로그 (장비 주소 · 명령 · 시간)
 
 
 def _log(msg, tag="err"):
@@ -55,13 +56,28 @@ class RInst:
         _log("✖ %s 다시 연결 실패: %s (케이블 · 전원 · 주소 확인 후 [연결] 다시)" % (self._res, last_e), "err")
         return False
 
+    def _diag(self, kind, cmd, txt):
+        """장비별 진단 로그 (느린 응답 · 실패) - 같은 장비 · 같은 종류는 20 초에 한 번 (로그가 넘치지 않게)"""
+        now = time.time()
+        key = "_d_" + kind
+        if now - self.__dict__.get(key, 0) < 20:
+            return
+        self.__dict__[key] = now
+        _log("%s %s · '%s' %s" % ("⏱ 느린 응답:" if kind == "slow" else "✖ 응답 실패:", self._res, cmd, txt), "err")
+
     def _call(self, name, *a, **k):
         with self._lock:
+            t0 = time.time()
+            cmd = str(a[0]).strip()[:30] if a else name
             try:
                 r = getattr(self._i, name)(*a, **k)
                 object.__setattr__(self, "_fails", 0)
+                dt = time.time() - t0
+                if dt > SLOW_S:
+                    self._diag("slow", cmd, "%.1f 초 (GPIB 줄이 바쁘거나 장비 응답 지연)" % dt)
                 return r
-            except Exception:
+            except Exception as e_:
+                self._diag("fail", cmd, "%.1f 초 뒤 %s: %s" % (time.time() - t0, type(e_).__name__, str(e_)[:80]))
                 if self._closed:
                     raise
                 object.__setattr__(self, "_fails", self._fails + 1)

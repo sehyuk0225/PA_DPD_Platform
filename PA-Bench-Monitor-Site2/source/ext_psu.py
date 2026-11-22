@@ -759,7 +759,7 @@ def attach_panel(app, ext):
                 continue
             a_ = (addr or "").strip().upper()
             if a_ not in ext.dev and (time.time() - ext.fail_t.get(a_, 0) < 60
-                                      or getattr(app, "sweep", None) or getattr(app, "ramp", None)):
+                                      or getattr(app, "sweep", None) or getattr(app, "ramp", None) or dpd_busy()):
                 out[k] = None                              # 연결 안 된 장비: 60 초에 한 번만 다시 시도 · 측정 중엔 안 함 (Vdd 읽기를 막지 않게)
                 continue
             try:
@@ -772,8 +772,14 @@ def attach_panel(app, ext):
 
     orig_read = P.read_job
 
+    def dpd_busy():
+        try:
+            return bool(app.dpd_running())                 # DPD 측정 중 (I/Q 받을 때마다 Vdd 전류가 필요)
+        except Exception:
+            return False
+
     def read2(full=True):
-        busy = bool(getattr(app, "sweep", None) or getattr(app, "ramp", None))
+        busy = bool(getattr(app, "sweep", None) or getattr(app, "ramp", None)) or dpd_busy()
         now = time.time()
         if busy and full and now - getattr(ext, "_full_t", 0) < 3.0:
             full = False          # 자동 측정 중엔 설정값 · 출력 상태 (질문 6 개 더) 는 3 초에 한 번 → Vdd 전류를 자주 읽게
