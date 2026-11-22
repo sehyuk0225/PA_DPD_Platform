@@ -606,6 +606,12 @@ class Tip:
 
 # 칸 설명 (첫 줄 = 제목, 아래 = 무엇 · 이렇게 바꾸세요) - 사용 가이드 PPT 와 같은 내용
 TIPS = {
+    "mk3": "Multi-Kernel GMP 3D 커널 (JSH)\n항 = x(n−m) · |x(n−m−l1)|^p1 · |x(n−m−l2)|^p2  (l1 ≠ l2, 둘 다 0 아님)\n"
+           "K = 이 커널 최고 차수 (1 + p1 + p2 ≤ K) · Q = envelope 하나의 최고 지수 (p ≤ Q)\n"
+           "M = 신호 지연 m = 0 … M−1 · O = envelope 지연 범위 l = −O … +O\n예 5 2 2 2 · 빈칸 = 끔. 항 수는 로그 'Multi-Kernel GMP' 줄.",
+    "mk4": "Multi-Kernel GMP 4D 커널 (JSH): 서로 다른 시각 envelope 3 개 곱\n항 = x(n−m) · |x(n−m−l1)|^p1 · |x(n−m−l2)|^p2 · |x(n−m−l3)|^p3\n"
+           "K Q M O 뜻은 3D 와 같음 (O ≥ 2 라야 지연 3 개를 고를 수 있음). 빈칸 = 끔.",
+    "mk5": "Multi-Kernel GMP 5D 커널 (JSH): 서로 다른 시각 envelope 4 개 곱\nK ≥ 5 · O ≥ 2 필요. 항이 빨리 늘어나니 Q 1 · M 1 부터. 빈칸 = 끔.",
     "bw_mode": "대역\n100 MHz DPD: NR 100 MHz 만들기 또는 내 .wv.\n400 MHz DPD: 내 .wv 만 (샘플레이트 그대로, 줄이기 없음).\n파일 · ACLR 채널 폭 · 간격은 대역마다 따로 기억.",
     "sig_src": "신호\nNR 100 MHz 1C 를 직접 만들거나, 내 .wv (R&S, 암호화 안 된 것) 를 불러옴.\n회사 신호가 있으면 내 .wv, 아니면 NR.",
     "wv_path": "내 .wv 파일\nSMW 에서 재생할 신호. 샘플레이트 그대로 씀.",
@@ -761,6 +767,9 @@ class App:
         ("K", "비선형 차수 K", "7", "", "dpd"),
         ("M", "메모리 깊이 M", "4", "탭", "dpd"),
         ("L", "GMP 교차 지연 L", "1", "0 = 메모리 다항식", "dpd"),
+        ("mk3", "3D 커널 K Q M O", "5 2 2 2", "예 5 2 2 2 (빈칸 = 끔)", "dpd"),        # JSH: Multi-Kernel GMP
+        ("mk4", "4D 커널 K Q M O", "", "예 5 1 1 2 (빈칸 = 끔)", "dpd"),
+        ("mk5", "5D 커널 K Q M O", "", "예 5 1 1 2 (빈칸 = 끔)", "dpd"),
         ("dvr_seg", "DVR 구간 수", "8", "개 (6 ~ 12)", "dpd"),
         ("iters", "반복 횟수", "4", "번", "dpd"),
         ("mu", "섞기 비율 μ", "0.7", "1 = 새 계수만", "dpd"),
@@ -777,15 +786,15 @@ class App:
         ("focus_w", "집중 가중", "4", "배 (ILC · DLA)", "dpd"),
     ]
     MODELS = (("gmp", "GMP"), ("sgmp", "구간 GMP"), ("dvr", "DVR"), ("nn", "신경망"), ("pnn", "위상정규 신경망"),
-              ("tnn", "torch 신경망"))
-    MODEL_TIP = {"gmp": "기본 · 빠르고 안정", "sgmp": "Doherty 피크 레벨 앞뒤로 GMP 두 벌",
+              ("tnn", "torch 신경망"), ("mkgmp", "Multi-Kernel GMP"))
+    MODEL_TIP = {"mkgmp": "GMP + 3D·4D·5D 커널 (서로 다른 시각 envelope 곱) · JSH","gmp": "기본 · 빠르고 안정", "sgmp": "Doherty 피크 레벨 앞뒤로 GMP 두 벌",
                  "dvr": "크기 구간마다 다른 기울기 (Doherty 꺾임에 강함)", "nn": "작은 신경망 (ARVTDNN)",
                  "pnn": "신경망 + 위상 정규화 (진폭 왜곡부터 배움)",
                  "tnn": "PyTorch 큰 신경망 (2층 · 위상 정규화) - torch 없으면 numpy 로 대신"}
     # 모델마다 보이는 칸 (없는 칸은 모든 모델 공통)
-    MODEL_ROWS = {"K": ("gmp", "sgmp"), "L": ("gmp", "sgmp"), "dvr_seg": ("dvr",), "mu": ("gmp", "sgmp", "dvr"),
-                  "lam": ("gmp", "sgmp", "dvr"), "nn_hidden": ("nn", "pnn", "tnn"), "nn_epochs": ("nn", "pnn", "tnn"),
-                  "_odd": ("gmp", "sgmp"), "_auto": ("gmp", "dvr"), "_learn": ("gmp", "sgmp", "dvr", "nn", "pnn", "tnn"), "_gref": ("gmp", "sgmp", "dvr", "nn", "pnn", "tnn")}
+    MODEL_ROWS = {"K": ("gmp", "sgmp", "mkgmp"), "L": ("gmp", "sgmp", "mkgmp"), "dvr_seg": ("dvr",), "mu": ("gmp", "sgmp", "dvr", "mkgmp"),
+                  "lam": ("gmp", "sgmp", "dvr", "mkgmp"), "mk3": ("mkgmp",), "mk4": ("mkgmp",), "mk5": ("mkgmp",), "nn_hidden": ("nn", "pnn", "tnn"), "nn_epochs": ("nn", "pnn", "tnn"),
+                  "_odd": ("gmp", "sgmp", "mkgmp"), "_auto": ("gmp", "dvr"), "_learn": ("gmp", "sgmp", "dvr", "nn", "pnn", "tnn", "mkgmp"), "_gref": ("gmp", "sgmp", "dvr", "nn", "pnn", "tnn", "mkgmp")}
     CMP_DEF = ["gmp:ila", "gmp:dla", "sgmp:ila", "dvr:ila", "nn:ila", "pnn:ila"]
     OS_TXT = {"2": "245.76 MSps · 인접 채널 일부만", "3": "368.64 MSps", "4": "491.52 MSps (권장)"}
 
@@ -3073,6 +3082,10 @@ class App:
                                    % (msg, dpd_torch.py_tag()))
 
     def models_on(self):
+        if "models_on" in self.s and not self.s.get("mkgmp_added"):     # JSH: 예전 설정 목록에도 Multi-Kernel GMP 한 번 넣음
+            self.s["mkgmp_added"] = True
+            if "mkgmp" not in self.s["models_on"]:
+                self.s["models_on"] = list(self.s["models_on"]) + ["mkgmp"]
         on = [k for k in self.s.get("models_on", [k for k, _ in self.MODELS if k != "tnn"]) if k in dict(self.MODELS)]
         return on or ["gmp"]
 
@@ -3276,7 +3289,7 @@ class App:
                 p[key] = val
             elif key == "fsw_rbw_khz":
                 p[key] = max(fnum(val, 0.0), 0.0) if val else 0.0
-            elif key in ("smw_host", "fsw_host", "mod", "fsw_att_db", "fsw_ref_dbm"):
+            elif key in ("smw_host", "fsw_host", "mod", "fsw_att_db", "fsw_ref_dbm", "mk3", "mk4", "mk5"):
                 p[key] = val
             elif key == "fit_us":
                 p[key] = max(fnum(val, 0.0), 0.0) if val else 0.0

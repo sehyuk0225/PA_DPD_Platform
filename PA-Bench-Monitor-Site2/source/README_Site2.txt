@@ -1,8 +1,18 @@
-PA Bench Monitor Site2 v1.4.52_JSH  (PA Bench Monitor v2.5.137 기반 · PA Analyzer 연동판)
+PA Bench Monitor Site2 v1.4.52.1_JSH  (PA Bench Monitor v2.5.137 기반 · PA Analyzer 연동판)
+
+■ v1.4.52.1_JSH - 4 카드 모델 'Multi-Kernel GMP' (3D · 4D · 5D 커널)
+  - 2D GMP (K · M · L, 지금 GMP 와 같음) 에 서로 다른 시각의 envelope 를 여러 개 곱한 커널을 더함
+      nD 항 = x(n−m) · |x(n−m−l1)|^p1 · … · |x(n−m−l(n−1))|^p(n−1)   (l 은 서로 다르고 0 아님)
+  - 커널마다 칸 하나 'K Q M O' (빈칸 = 끔) - 4 카드 [3D 커널] · [4D 커널] · [5D 커널]
+      K = 그 커널 최고 차수 (1 + Σp ≤ K) · Q = envelope 하나의 최고 지수 · M = 신호 지연 0 … M−1 · O = envelope 지연 범위 −O … +O
+      예) 3D 5 2 2 2 = 48 항 · 4D 5 1 1 2 = 4 항 · 5D 5 1 1 2 = 1 항 ('홀수 차수만' 이면 전체 차수도 홀수만)
+  - ILA · DLA · ILC 결과로 모델 모두 사용 · 로그에 'Multi-Kernel GMP: … 계수 ○ 개' (600 개 넘으면 ⚠)
+  - 예전 설정의 모델 목록에도 한 번 자동으로 넣음 (목록 편집… 에서 뺄 수 있음)
+  - 'K·M·L 자동' · ILC→모델 넓힘 · 선형 등화 · 트래핑 은 GMP 전용 (Multi-Kernel GMP 는 정한 값 그대로)
 
 ■ v1.4.52_JSH (JSH 판 · 원본 v1.4.52 에 아래 두 가지만 더함)
   - 위쪽 패널 녹색 테마: 맨 위 막대 · 측정 탭 줄 · 큰 숫자 칸 사이 바탕만 #00704A (글씨 · 숫자 칸 · 버튼은 원래 색)
-    EXE 이름: dist\PA-Bench-Monitor-Site2_v1.4.52_JSH\PA-Bench-Monitor-Site2_v1.4.52_JSH.exe
+    EXE 이름: dist\PA-Bench-Monitor-Site2_v1.4.52.1_JSH\PA-Bench-Monitor-Site2_v1.4.52.1_JSH.exe
   - ILC 신호 · 평균 I/Q 를 .bin 으로 자동 저장
     저장 위치: 프로그램 (EXE) 폴더 안 Signals\ILC_날짜_시각_SG○○dBm\  (못 쓰면 %APPDATA%\PADPDTester\Signals\)
       00_원신호.bin · 00_DPD_OFF_평균IQ.bin           DPD OFF 때

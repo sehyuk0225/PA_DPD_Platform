@@ -383,6 +383,97 @@ class DPDModel:
 
 
 
+def parse_kernel(txt):
+    """JSH: '5 2 2 2' 또는 '5,2,2,2' → (K, Q, M, O) · 빈칸 · 0 → None"""
+    import re as _re
+    v = [int(float(t)) for t in _re.split(r"[\s,/·]+", str(txt or "").strip()) if t]
+    if not v or v[0] <= 1:
+        return None
+    v = (v + [1, 1, 1])[:4] if len(v) < 4 else v[:4]
+    K, Q, M, O = v
+    return max(int(K), 1), max(int(Q), 1), max(int(M), 1), max(int(O), 1)
+
+
+class MKGMPModel(DPDModel):
+    """JSH: Multi-Kernel GMP = 2D GMP (K · M · L) + 3D · 4D · 5D 커널.
+    nD 커널 항 = x(n−m) · |x(n−m−l1)|^p1 · … · |x(n−m−l(n−1))|^p(n−1)
+      - 신호 지연 m = 0 … M−1 (그 커널의 메모리 깊이 M)
+      - envelope 지연 l1 < l2 < … : 서로 다른 n−1 개, −O … +O 중 0 아닌 값 (O = 그 커널의 지연 범위)
+      - 각 지수 p = 1 … Q (Q = envelope 하나의 최고 지수), 전체 차수 1 + Σp ≤ K (그 커널의 최고 차수)
+      - '홀수 차수만' 이면 전체 차수도 홀수만
+    2D GMP x(n−m)|x(n−m−l)|^(k−1) 은 envelope 지연 1 개 → 3D 부터 서로 다른 시각의 envelope 를 곱함
+    (Volterra 의 ∏|x(n−ij)| 항을 GMP 처럼 묶은 것)"""
+
+    def __init__(self, K=7, M=4, L=0, odd_only=False, lam=1e-6, kernels=None):
+        super().__init__(K, M, L, odd_only, lam)
+        self.kernels = {int(d): tuple(int(v) for v in kq) for d, kq in (kernels or {}).items() if kq}
+        self._terms = None
+
+    def kernel_terms(self):
+        """[(D, m, ((l1, p1), (l2, p2), …)), …] - 항 목록 (계산 한 번만)"""
+        if self._terms is not None:
+            return self._terms
+        from itertools import combinations, product
+        out = []
+        for D in sorted(self.kernels):
+            K, Q, M, O = self.kernels[D]
+            ne = D - 1
+            offs = [o for o in range(-O, O + 1) if o != 0]
+            for m in range(M):
+                for ls in combinations(offs, ne):
+                    for ps in product(range(1, Q + 1), repeat=ne):
+                        k = 1 + sum(ps)
+                        if k > K or (self.odd and k % 2 == 0):
+                            continue
+                        out.append((D, m, tuple(zip(ls, ps))))
+        self._terms = out
+        return out
+
+    def kernel_counts(self):
+        c = {}
+        for D, _m, _lp in self.kernel_terms():
+            c[D] = c.get(D, 0) + 1
+        return c
+
+    def basis(self, u):
+        B = super().basis(u)
+        tl = self.kernel_terms()
+        if not tl:
+            return B
+        a = np.abs(u)
+        cache = {}
+
+        def env(sh, pw):
+            k_ = (sh, pw)
+            if k_ not in cache:
+                cache[k_] = np.roll(a, sh) ** pw
+            return cache[k_]
+        cols = np.empty((len(u), len(tl)), dtype=complex)
+        for j, (D, m, lps) in enumerate(tl):
+            v = np.roll(u, m)
+            for l_, p_ in lps:
+                v = v * env(m + l_, p_)
+            cols[:, j] = v
+        return np.concatenate([B, cols], axis=1)
+
+    def term_names(self):
+        nm = super().term_names()
+        for D, m, lps in self.kernel_terms():
+            t_ = lambda d_: "n" if d_ == 0 else "n%+d" % d_
+            nm.append("%dD x(%s)" % (D, t_(-m)) + "".join("|x(%s)|^%d" % (t_(-(m + l_)), p_) for l_, p_ in lps))
+        return nm
+
+    def pad(self):
+        mx = max([super().pad()] + [M + O + 1 for (_K, _Q, M, O) in self.kernels.values()])
+        return mx
+
+    def kernel_text(self):
+        if not self.kernels:
+            return "3D·4D·5D 커널 없음 (= GMP)"
+        cnt = self.kernel_counts()
+        return " · ".join("%dD (K%d Q%d M%d O%d) %d 항" % (D, *self.kernels[D], cnt.get(D, 0)) for D in sorted(self.kernels))
+
+
 class LinGMPModel(DPDModel):
     """GMP + 긴 선형 등화 (앞뒤 ±nlin 탭 FIR) - 넓은 대역 (400 MHz) 의 이득 리플 · 지연 (케이블 반사 · 필터) 을
     선형 항으로 따로 맞추고 비선형은 GMP 로. 계수는 한 번에 같이 학습 (ILA · 적용 모두 그대로)"""

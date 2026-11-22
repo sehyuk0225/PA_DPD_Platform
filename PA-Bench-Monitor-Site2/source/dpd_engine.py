@@ -31,7 +31,7 @@ DEFAULTS = dict(
 )
 
 
-MODEL_NAMES = {"gmp": "GMP", "sgmp": "구간 GMP", "dvr": "DVR", "nn": "신경망", "pnn": "위상정규 신경망", "tnn": "torch 신경망"}
+MODEL_NAMES = {"gmp": "GMP", "sgmp": "구간 GMP", "dvr": "DVR", "nn": "신경망", "pnn": "위상정규 신경망", "tnn": "torch 신경망", "mkgmp": "Multi-Kernel GMP"}
 
 
 def migrate_method(p):
@@ -278,6 +278,14 @@ class Engine:
             m = C.DVRModel(int(p.get("dvr_seg", 8) if nseg is None else nseg), M, p["lam"])
         elif mdl == "sgmp":
             m = C.SegGMPModel(K, M, L, p["odd_only"], p["lam"])
+        elif mdl == "mkgmp":                                # JSH: Multi-Kernel GMP (2D GMP + 3D · 4D · 5D 커널)
+            m = C.MKGMPModel(K, M, L, p["odd_only"], p["lam"], self.mk_kernels())
+            key_ = (K, M, L, tuple(sorted(m.kernels.items())), p["odd_only"])
+            if getattr(self, "_mk_logged", None) != key_:
+                self._mk_logged = key_
+                self.log("  Multi-Kernel GMP: 2D K%d M%d L%d · %s · 계수 %d 개" % (K, M, L, m.kernel_text(), m.n_coef()))
+                if m.n_coef() > 600:
+                    self.log("  ⚠ 계수 %d 개 → 학습이 느리고 과적합 쉬움 (Q · O · M 을 줄이거나 λ ↑)" % m.n_coef())
         else:
             m = C.DPDModel(K, M, L, p["odd_only"], p["lam"])
         m.w = None
@@ -2150,7 +2158,22 @@ class Engine:
         pu, _ = C.band_power(f, Pe, adj, bwc)
         return float(10 * np.log10(max(pl, pu) / pc))
 
+    def mk_kernels(self):
+        """JSH: 4 카드 '3D · 4D · 5D 커널' 칸 → {3: (K, Q, M, O), …} (빈칸 = 끔)"""
+        out = {}
+        for D in (3, 4, 5):
+            try:
+                kq = C.parse_kernel(self.p.get("mk%d" % D, ""))
+            except Exception:
+                kq = None
+                self.log("  ⚠ %dD 커널 칸을 못 읽음 (예: 5 2 2 2 = K Q M O) → 끔" % D)
+            if kq:
+                out[D] = kq
+        return out
+
     def _like(self, m, K, lam):
+        if isinstance(m, C.MKGMPModel):                    # JSH
+            return C.MKGMPModel(K, m.M, m.L, m.odd, lam, m.kernels)
         if isinstance(m, C.TrapGMPModel):
             m2 = C.TrapGMPModel(K, m.M, m.L, m.odd, lam, m.nlin, m.fs, m.taus_us)
             m2.nconj = int(getattr(m, "nconj", 0) or 0)

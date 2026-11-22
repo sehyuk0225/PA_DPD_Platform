@@ -3,3 +3,5 @@ __pycache__/
 build/
 dist/
 *.spec
+PA-Bench-Monitor-Site2/source/Signals/
+__pycache__/
