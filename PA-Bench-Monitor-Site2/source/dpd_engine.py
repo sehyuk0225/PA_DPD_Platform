@@ -500,6 +500,7 @@ class Engine:
         rbw = float(p.get("fsw_rbw_khz") or 0) * 1e3 or None
         K = max(1, int(p.get("cap_up") or 1))          # FSW 만 K 배 빠르게 받음 (SMW 는 신호 샘플레이트 그대로) → I/Q 대역 넓게
         bw = self.fsw.setup(p["freq_ghz"] * 1e9, sig.fs * K, ref if ref == ref else 10.0, att, rbw)
+        self._fsw_bw = bw                                  # JSH: ILC 보정 대역 자동 (FSW 가 보는 대역)
         if ref_auto and ref != ref:
             # 처음 (이 실행 · 이 레벨에서 아직 모름): FSW 자동 레벨로 Ref Level · 감쇠를 신호에 맞춤 → ADC 를 꽉 채워 잡음 바닥 ↓
             al_ = self.fsw.auto_level()
@@ -1545,6 +1546,40 @@ class Engine:
                 p["w_mode"] = wm0
                 self._wlog = False
 
+    def ilc_band(self):
+        """JSH: ILC 가 고치는 대역 ±f (Hz) · None = 전 대역 (원본과 같음)
+        칸 'ILC 보정 대역': 빈칸 = 자동 = 인접 채널 바깥 끝 + 인접 간격의 1/4 (FSW 관측 대역 · 0.48 fs 안)
+                            0 = 전 대역 · 숫자 = ±그 MHz"""
+        fs = self.sig.fs
+        txt = str(self.p.get("ilc_bw_mhz", "") or "").strip()
+        try:
+            v = float(txt) if txt else None
+        except ValueError:
+            v = None
+        if v is not None and v <= 0:
+            return None, "전 대역 (제한 끔)"
+        bw_ = getattr(self, "_fsw_bw", float("nan"))
+        fo = bw_ / 2 if (bw_ == bw_ and bw_ > 0) else 0.4 * fs
+        fo = min(fo, 0.48 * fs)
+        if v is not None:
+            f = min(v * 1e6, 0.5 * fs)
+            return f, "±%.0f MHz (칸 값)" % (f / 1e6)
+        cars, bwm, adj = self.aclr_plan()
+        edge = max(abs(fc) for fc, _w in cars) + adj + bwm / 2           # 바깥 인접 채널 끝
+        f = min(edge + 0.25 * adj, fo)
+        return f, "±%.0f MHz (자동: 인접 채널 끝 %.0f + 여유 · FSW 관측 ±%.0f)" % (f / 1e6, edge / 1e6, fo / 1e6)
+
+    def ilc_band_mask(self, e, fl):
+        """e 의 |f| > fl 성분을 지움 (가장자리 5 % 코사인)"""
+        if fl is None:
+            return e
+        n = len(e)
+        f = np.abs(np.fft.fftfreq(n, 1 / self.sig.fs))
+        tw = 0.05 * fl
+        w = np.clip((fl - f) / tw, 0.0, 1.0)
+        w = 0.5 - 0.5 * np.cos(np.pi * w)
+        return np.fft.ifft(np.fft.fft(e) * w)
+
     def _ilc_level0(self, y_al, label_pre, step, resume=None):
         """ILC: 모델 없이 측정을 되풀이하며 'PA 출력 = 원래 신호' 가 되는 입력을 샘플마다 직접 찾음 → 이 PA 의 한계 ACLR"""
         p, x = self.p, self.sig.x
@@ -1561,10 +1596,12 @@ class Engine:
         self.sig_bin_start(label_pre)                      # JSH: Signals\ILC_… 폴더
         if not resume:
             self.sig_bin(y_al, "00_DPD_OFF_평균IQ")
+        fl_, why_ = self.ilc_band()                        # JSH: 고치는 대역 (넓은 샘플레이트에서 대역 끝 발산 막기)
+        self.log("  ILC 보정 대역: %s" % why_)
         for k in range(k0 + 1, k0 + n + 1):
             self.check()
             self.log("▶ %sILC %d / %d (한계 ACLR 찾기 · 이득 %.2f)" % (label_pre, k, k0 + n, gk))
-            e = x - y_al / self.G
+            e = self.ilc_band_mask(x - y_al / self.G, fl_)
             u = u + gk * self.focus_weight(e)
             a = np.abs(u)
             n_clip = int(np.sum(a > lim))

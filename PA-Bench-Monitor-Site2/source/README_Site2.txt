@@ -1,4 +1,12 @@
-PA Bench Monitor Site2 v1.4.52.1_JSH  (PA Bench Monitor v2.5.137 기반 · PA Analyzer 연동판)
+PA Bench Monitor Site2 v1.4.52.2_JSH  (PA Bench Monitor v2.5.137 기반 · PA Analyzer 연동판)
+
+■ v1.4.52.2_JSH - ILC 보정 대역 제한 (넓은 샘플레이트에서 ILC 발산 막기)
+  - 증상: 400 MHz 1966.08 MSps ('절반' 끔) 에서 ILC 가 내려가다 다시 나빠지고 ±600 MHz 바깥에 혹 (983.04 MSps 는 −50 dBc, 1966 은 −40)
+  - 까닭: ILC 는 '보낸 만큼 그대로 돌아온다 (위상 0)' 고 보고 고침 → SMW · FSW 광대역 끝 (±600 MHz 넘어) 은 위상이 틀어져
+          (90° 넘으면) 고칠수록 커짐. 983 MSps 는 FSW 가 ±393 MHz 만 봐서 그 구간이 없었음
+  - 5 카드 [ILC 보정 대역] ± MHz: 빈칸 = 자동 (바깥 인접 채널 끝 + 인접 간격 1/4, FSW 관측 대역 안 → 2CC 400 MHz 는 약 ±450)
+                                  0 = 전 대역 (원본 동작) · 숫자 = 그 값. 로그 'ILC 보정 대역: …'
+  - 983 MSps 에서는 자동 값이 거의 FSW 관측 끝 (±393) 이라 예전과 같음
 
 ■ v1.4.52.1_JSH - 4 카드 모델 'Multi-Kernel GMP' (3D · 4D · 5D 커널)
   - 2D GMP (K · M · L, 지금 GMP 와 같음) 에 서로 다른 시각의 envelope 를 여러 개 곱한 커널을 더함
@@ -12,7 +20,7 @@ PA Bench Monitor Site2 v1.4.52.1_JSH  (PA Bench Monitor v2.5.137 기반 · PA An
 
 ■ v1.4.52_JSH (JSH 판 · 원본 v1.4.52 에 아래 두 가지만 더함)
   - 위쪽 패널 녹색 테마: 맨 위 막대 · 측정 탭 줄 · 큰 숫자 칸 사이 바탕만 #00704A (글씨 · 숫자 칸 · 버튼은 원래 색)
-    EXE 이름: dist\PA-Bench-Monitor-Site2_v1.4.52.1_JSH\PA-Bench-Monitor-Site2_v1.4.52.1_JSH.exe
+    EXE 이름: dist\PA-Bench-Monitor-Site2_v1.4.52.2_JSH\PA-Bench-Monitor-Site2_v1.4.52.2_JSH.exe
   - ILC 신호 · 평균 I/Q 를 .bin 으로 자동 저장
     저장 위치: 프로그램 (EXE) 폴더 안 Signals\ILC_날짜_시각_SG○○dBm\  (못 쓰면 %APPDATA%\PADPDTester\Signals\)
       00_원신호.bin · 00_DPD_OFF_평균IQ.bin           DPD OFF 때

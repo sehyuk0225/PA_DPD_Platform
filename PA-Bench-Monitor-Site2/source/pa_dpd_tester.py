@@ -674,6 +674,10 @@ TIPS = {
     "nn_epochs": "신경망 학습 횟수\n(20 ~ 50, 기본 30). 결과가 덜 좋으면 ↑.",
     "ilc_iters": "ILC 반복\n한계 ACLR 찾기 반복 (10 ~ 15).",
     "ilc_gain": "ILC 이득\n한 번에 고치는 양 (기본 0.8). 흔들리면 0.5.",
+    "ilc_bw_mhz": "ILC 보정 대역 (JSH)\nILC 가 고치는 주파수 범위 ±MHz (신호 가운데 기준).\n"
+                  "빈칸 = 자동: 바깥 인접 채널 끝 + 인접 간격의 1/4 (FSW 가 보는 대역 안) - 예 2CC 400 MHz → ±약 450 MHz\n"
+                  "0 = 전 대역 (원본 동작). 1966 MSps 처럼 넓게 받으면 대역 끝 (±600 MHz 넘어) 에서 SMW · FSW 위상이 틀어져\n"
+                  "ILC 가 내려가다 다시 나빠지고 바깥에 혹이 생김 → 자동 제한이 그걸 막음. 로그 'ILC 보정 대역' 줄.",
     "odd_only": "홀수 차수만\nK = 1, 3, 5 … 만 사용. 보통 끔 (짝수 항도 도움이 됨).",
     "g_ref": "목표 이득 (DPD 가 맞출 직선의 기울기)\nDPD 는 출력 = 입력 × G 가 되게 입력을 고침. G 를 어디서 잴지.\n\n· 작은 신호 (기본 · 예전 그대로): 크기 하위 30 % 샘플의 이득.\n  Doherty 는 피크에서 압축 → 피크 입력을 그만큼 키워야 함 → '최고값 제한' 에 걸리면 잘려서 왜곡이 남음.\n· 평균: 전체 샘플로 맞춘 이득. 작은 신호보다 보통 조금 낮음 → 피크를 덜 키움.\n· 피크 기준: 위 0.5 % 피크의 이득 → 피크를 거의 안 키워도 됨 (잘림 ↓). 대신 작은 신호를 줄이므로\n  같은 Pout 에 SG 를 더 올려야 함 (Pout 유지 · 맞춤이 알아서).\n\nDPD OFF 뒤 로그 '목표 이득 진단': 평균 · 피크 이득 · 피크 압축 dB · 피크 입력을 몇 dB 키워야 하는지 vs 최고값 제한.\n'⚠ 제한보다 큼' 이 뜨면 평균 / 피크 기준으로 바꾸거나 최고값 제한을 올려 보세요.",
     "auto_model": "모델 크기 자동 (GMP · DVR)\nGMP: K · M · L 을 계산으로 36 조합 → 후보 3개 실측 → ACLR 가장 좋은 것.\nDVR: 구간 수 · M 을 계산으로 20 조합 → 후보 3개 실측 → ACLR 가장 좋은 것.\n고른 값은 칸에 들어가고 샘플별 기억. ILC→모델 에서는 5 카드 \'넓혀 찾기\' 가 같은 일을 (계산만).\n처음 · 새 샘플이면 켬, 주파수 · 샘플 비교 측정이면 끄고 고정.",
@@ -782,6 +786,7 @@ class App:
         ("nn_epochs", "신경망 학습 횟수", "30", "번 (신경망만)", "dpd"),
         ("ilc_iters", "ILC 반복", "15", "번 (한계 ACLR)", "dpd"),
         ("ilc_gain", "ILC 이득", "0.8", "(작을수록 천천히 · 안정)", "dpd"),
+        ("ilc_bw_mhz", "ILC 보정 대역", "", "± MHz (빈칸 = 자동 · 0 = 전 대역)", "dpd"),     # JSH
         ("focus_mhz", "집중 구간", "", "MHz 예 50-70 (빈칸 = 끔)", "dpd"),
         ("focus_w", "집중 가중", "4", "배 (ILC · DLA)", "dpd"),
     ]
@@ -1782,7 +1787,7 @@ class App:
             row=3, column=1, columnspan=2, sticky="w", pady=(0, 4))
         self.dpd_rows = {"_learn": 2, "_gref": 3}
         r = 4
-        ILC_K = ("ilc_iters", "ilc_gain", "focus_mhz", "focus_w")      # 집중 구간 · 가중은 아래 '보정 기준' 묶음 · ILC 반복 · 이득은 5 카드
+        ILC_K = ("ilc_iters", "ilc_gain", "ilc_bw_mhz", "focus_mhz", "focus_w")      # 집중 구간 · 가중은 아래 '보정 기준' 묶음 · ILC 반복 · 이득은 5 카드
         for key, name, dflt, unit in fields["dpd"]:
             if key in ILC_K:
                 continue
@@ -1866,7 +1871,7 @@ class App:
         self.v["model"].trace_add("write", lambda *a: self.model_changed())
         self.v["method"].trace_add("write", lambda *a: self.method_compat())
         self.refresh_models()
-        self.dpd_keys = [k for k, *_ in fields["dpd"] if k not in ("ilc_iters", "ilc_gain")] + ["odd_only", "auto_model", "model", "method", "w_mode", "g_ref"]
+        self.dpd_keys = [k for k, *_ in fields["dpd"] if k not in ("ilc_iters", "ilc_gain", "ilc_bw_mhz")] + ["odd_only", "auto_model", "model", "method", "w_mode", "g_ref"]
         self.setup_undo(self.dpd_keys)
         self._cur_type = self.type_name()
         self.show_auto_kml()
@@ -1998,7 +2003,7 @@ class App:
         R[0] = 0
         fz_ = ttk.Frame(b5, style="Card.TFrame")
         fz_.grid(row=nxt(), column=0, columnspan=2, sticky="ew")
-        ik_ = [f_ for f_ in fields["dpd"] if f_[0] in ("ilc_iters", "ilc_gain")]
+        ik_ = [f_ for f_ in fields["dpd"] if f_[0] in ("ilc_iters", "ilc_gain", "ilc_bw_mhz")]
         for i_, (key, name, dflt, unit) in enumerate(ik_):
             self.field(fz_, i_, key, name, dflt, unit, width=7)
         self.dpd_keys += [k_ for k_, *_ in ik_ if k_ not in self.dpd_keys]     # 샘플 종류마다 기억 · 설정 저장에 그대로
@@ -3289,7 +3294,7 @@ class App:
                 p[key] = val
             elif key == "fsw_rbw_khz":
                 p[key] = max(fnum(val, 0.0), 0.0) if val else 0.0
-            elif key in ("smw_host", "fsw_host", "mod", "fsw_att_db", "fsw_ref_dbm", "mk3", "mk4", "mk5"):
+            elif key in ("smw_host", "fsw_host", "mod", "fsw_att_db", "fsw_ref_dbm", "mk3", "mk4", "mk5", "ilc_bw_mhz"):
                 p[key] = val
             elif key == "fit_us":
                 p[key] = max(fnum(val, 0.0), 0.0) if val else 0.0
